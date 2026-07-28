@@ -90,8 +90,30 @@ type SkillEntry = {
 type ConfigState = {
   stackId: string | null                    // null = "Start from scratch"
   skills: Partial<Record<SkillId, SkillEntry>>  // SPARSE — presence *is* selection
+  remembered: Partial<Record<SkillId, SkillEntry>>  // deselected, not discarded
 }
 ```
+
+**Deselecting is not destructive.** One click removes a skill; the configuration behind it can be a
+dozen — nine sub-agent assignments, a model, an effort — and the cell gives no warning, because
+deselect reads as "not included" rather than "erase my work". A deselected entry moves to
+`remembered` and is restored if the skill is selected again.
+
+One rule covers both cases, with no special case per category: *a skill remembers how you configured
+it; a skill you have never configured starts blank.* An exclusive swap evicts the sibling, which is
+a deselection the user did not click, so it keeps the same promise — pick Vue over React and React
+returns configured when you pick it back, while Vue starts blank because it has never been
+configured.
+
+Two boundaries stop this becoming a leak. `isWorthRemembering` drops entries that carry no
+information at all — default options, no assignments — which is what a blank skill selected and
+immediately deselected looks like; note that a stack-applied skill arrives *with* assignments and so
+is always remembered. And `applyStack` clears the map, because it is the explicit start-over action
+and already confirms first when edits would be lost.
+
+Derivations take `ConfigSelection` (`stackId` + `skills`), never `PersistedConfig`. A remembered
+skill must not appear in a grid, a roster line, a count or the install inventory, and excluding it
+at the type level means that cannot happen by accident.
 
 `assignments` is the **single source of truth**. Per-cell agent counts, the roster panel and the
 install inventory are all derived and none of them stores a copy — the prototype duplicated these
@@ -119,7 +141,7 @@ one is allowed because `toggleSkill`'s catalog guard widens to "catalog **or** s
 | Key        | `agents-inc:config:v1` / `agents-inc:ui:v1`                                                 |
 | Validation | `merge` → `safeParse`; on failure **return current** (silent reset, log in dev)              |
 | Stale ids  | `pruneUnknownIds` drops skill/stack/agent ids absent from the regenerated catalog            |
-| Migration  | `PERSIST_VERSION = 2`; v1 → v2 folds `agents[]` + `preloaded` into per-agent load states     |
+| Migration  | `PERSIST_VERSION = 3`; v1 → v2 folds `agents[]` + `preloaded` into per-agent load states, v2 → v3 adds `remembered` |
 
 ### URL search params — `/`
 
@@ -284,7 +306,38 @@ Each of these is a place the design could not be followed literally, with the re
 
 ---
 
-## 9. Deferred
+## 9. Testing
+
+Two layers, split by what each is good at.
+
+| Layer | Covers | Cost |
+| ----- | ------ | ---- |
+| **Unit** (`vitest`, 94 tests) | Pure logic: derivations, the persisted-schema boundary, the read model | ~20ms |
+| **E2E** (`playwright`, 88 tests) | Behaviour through a real browser: wiring, interaction, layout, persistence | ~16s |
+
+The split is not "units are better", it is **where a case is reachable**. Three things make a case
+belong in a unit test:
+
+- **The input space is combinatorial.** `isStackCustom` has six independent ways to flip and
+  `selectDomainViews` crosses four filters with two provenances of skill. Each case is one browser
+  round-trip end-to-end and microseconds in-process.
+- **The path is a boundary against untrusted or legacy data.** `migrateConfig` and `pruneUnknownIds`
+  read whatever localStorage happens to hold. This is the only place in the app where a bug is
+  *silent* — a broken migration does not throw, it quietly returns a configuration missing someone's
+  afternoon of work. Reaching it end-to-end means hand-seeding a legacy blob and reloading.
+- **Failure needs localising.** An E2E failure says the roster shows the wrong count; a unit failure
+  says `summarize` counted an assignment where it should have counted an agent.
+
+Everything else belongs in the browser, where a jsdom approximation would only be a weaker version
+of the same assertion. `packages/vitest-config` ships a node preset for that reason: nothing under
+unit test needs a DOM.
+
+Both suites are verified non-vacuous by injecting regressions and checking that exactly the tests
+naming the broken behaviour fail — see the tracker.
+
+---
+
+## 10. Deferred
 
 | Item                    | State                                                                        |
 | ----------------------- | ------------------------------------------------------------------------------ |

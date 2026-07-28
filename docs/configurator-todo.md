@@ -9,7 +9,7 @@ Mark items `[x]` as they land.
 
 | # | Item | Why it matters |
 | - | ---- | -------------- |
-| 1 | **No tests** | Every check so far has been a throwaway Playwright script. `derive.ts` and the `packages/matrix` read model are pure and cheap to cover — `derive.ts` grew a lot in v5 (roster, inventory, added-skill placement) and none of it is guarded. |
+| 1 | **No component tests** | Unit and E2E both exist; the gap between them is a single component rendered in isolation. Low priority — the primitives are presentational and the browser covers them in composition. |
 | 2 | **Bundle is one 958 KB chunk** (259 KB gzip), dominated by the 420 KB catalog | First paint on a cold cache |
 | 3 | **Backend** — a GitHub search proxy | The dialog talks to GitHub directly today at 10 req/min unauthenticated. A token cannot ship in a bundle. |
 | 4 | **Added skills are session-only** | By explicit instruction. Persisting means giving them real catalog entries — a marketplace concern. |
@@ -77,6 +77,9 @@ square, hairline-lattice, mono-labelled, single-amber-accent. Design system firs
 - The stack-switch confirm fired whenever *anything* was selected, so browsing Next.js → T3 → Remix
   prompted every time. It now tests `isStackCustom` — real edits, not a stack's own expansion
 - Skill icon slot had a `#f4f2ec` fill, which read as a second surface competing with the cell
+- **Deselecting a skill destroyed its configuration.** A dozen clicks of sub-agent assignments could
+  be lost to one stray toggle, with no undo and no warning. Deselected entries now move to
+  `remembered` and are restored on re-select; `PERSIST_VERSION` 3
 - **Sticking the filter bar blocked the main thread for 88ms.** `stuck` lived in the UI store and
   `DomainSection` subscribed to it, so flipping it re-rendered all 240 skill cells for a value only
   a `top` offset needed. Now attribute-driven (`data-bar-stuck` / `data-pinned`) with CSS doing the
@@ -85,11 +88,34 @@ square, hairline-lattice, mono-labelled, single-amber-accent. Design system firs
   arrived at different times. Gap is now constant and all three padding changes share one 150ms
 - Added a **`selected`** filter chip beside `recommended` (`?sel=true`)
 
+## Testing ✅
+
+- [x] Playwright E2E in `apps/web/e2e` — 77 tests across 9 specs, page objects, a
+      GitHub route mock, and `catalog.spec.ts` guarding the fixture values against
+      catalogue drift. Runs in ~15s.
+- [x] Verified non-vacuous: three regressions injected (router `resetScroll`, the
+      stack-confirm condition, exclusive-sibling eviction) each failed exactly the
+      tests that name them and nothing else.
+- [x] Verified stable: 2 × 385 runs (`--repeat-each=5`) with no flakes. Two earlier
+      versions of the scroll assertion *did* flake; see `e2e/README.md`.
+- [x] Building the suite surfaced missing accessible names — the skill cell's name
+      was its whole text content, the state badges announced a bare "plugin", and
+      the options panel had none. All now labelled.
+- [x] `skill-memory.spec.ts` — 11 tests covering deselect/re-select, exclusive swap, the
+      stack-provided case and the boundaries. Verified non-vacuous: disabling `isWorthRemembering`
+      fails 7 of them and leaves the 4 that assert the *absence* of memory passing.
+- [x] Unit tests — 94 across `derive.ts`, `persisted-schema.ts`, the added-skill helpers, the
+      GitHub formatters and the `packages/matrix` read model. Run in ~20ms.
+- [x] `packages/vitest-config` — the shared node preset the tracker anticipated
+- [x] Verified non-vacuous: blanking `isStackCustom`'s option comparison and miscounting
+      `summarize`'s agents failed exactly the 5 tests naming those behaviours. Only one of the
+      five would have been caught end-to-end.
+
 ## Phase 6 — Monorepo hygiene
 
 - [x] `packages/typescript-config` · `packages/eslint-config` · `packages/prettier-config`
 - [x] `syncpack` — `bun run deps:check` / `deps:fix`
-- [ ] `packages/vitest-config` + shared `testUtils` — when tests start
+- [x] `packages/vitest-config` — node preset for pure logic; no shared `testUtils` needed yet
 - [ ] Code-split the bundle
 
 ## Phase 7 — Backend, only if the deferred features land
