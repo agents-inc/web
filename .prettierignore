@@ -9,3 +9,5 @@ bun.lock
 packages/matrix/src/vendor/
 packages/matrix/src/generated/
 apps/web/src/lib/skill-icons.ts
+test-results/
+playwright-report/

@@ -10,7 +10,12 @@
     "format": "prettier --write \"**/*.{ts,tsx}\"",
     "typecheck": "tsc -b --noEmit",
     "preview": "vite preview",
-    "generate:icons": "bun scripts/generate-skill-icons.mjs"
+    "generate:icons": "bun scripts/generate-skill-icons.mjs",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:report": "playwright show-report",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@tanstack/react-router": "^1.170.18",
@@ -23,6 +28,7 @@
     "zustand": "^5.0.14"
   },
   "devDependencies": {
+    "@playwright/test": "1.56.1",
     "@tailwindcss/vite": "^4",
     "@types/node": "^24",
     "@types/react": "^19",
@@ -31,8 +37,10 @@
     "@workspace/eslint-config": "workspace:*",
     "@workspace/prettier-config": "workspace:*",
     "@workspace/typescript-config": "workspace:*",
+    "@workspace/vitest-config": "workspace:*",
     "eslint": "^10",
     "typescript": "~6",
-    "vite": "^8"
+    "vite": "^8",
+    "vitest": "^3"
   }
 }

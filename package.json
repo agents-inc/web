@@ -11,7 +11,9 @@
     "format": "turbo format",
     "typecheck": "turbo typecheck",
     "deps:check": "syncpack lint",
-    "deps:fix": "syncpack fix-mismatches"
+    "deps:fix": "syncpack fix-mismatches",
+    "test:e2e": "turbo test:e2e",
+    "test": "turbo test"
   },
   "devDependencies": {
     "@workspace/prettier-config": "workspace:*",
