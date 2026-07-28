@@ -60,6 +60,8 @@ export const ResolvedStackSchema = z.object({
 })
 
 export const MatrixSchema = z.object({
+  // Stamped into every seed payload so a consumer can explain skipped ids.
+  version: z.string(),
   categories: z.record(z.string(), CategoryDefinitionSchema),
   skills: z.record(z.string(), ResolvedSkillSchema),
   suggestedStacks: z.array(ResolvedStackSchema),

@@ -21,6 +21,24 @@ export {
   compareDomains,
 } from "./read-model/domains"
 
+export { MATRIX_VERSION } from "./read-model/source"
+
+export {
+  SEED_VERSION,
+  seedModelSchema,
+  seedEffortSchema,
+  seedLoadStateSchema,
+  seedSkillSchema,
+  seedPayloadSchema,
+} from "./seed"
+export type {
+  SeedModel,
+  SeedEffort,
+  SeedLoadState,
+  SeedSkill,
+  SeedPayload,
+} from "./seed"
+
 export { DOMAINS } from "./vendor/generated/source-types"
 export type {
   Domain,
