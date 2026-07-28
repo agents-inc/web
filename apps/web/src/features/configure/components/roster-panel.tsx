@@ -6,9 +6,20 @@ import {
   selectAvailableAgents,
   summarize,
 } from "@/features/configure/lib/derive"
+import {
+  useShareLink,
+  type ShareState,
+} from "@/features/configure/lib/use-share-link"
 import type { AddedSkill } from "@/stores/added-skills-store"
 import type { ConfigSelection } from "@/features/configure/lib/derive"
 import { useUiStore } from "@/stores/ui-store"
+
+const SHARE_LABELS: Record<ShareState, string> = {
+  idle: "Share",
+  sharing: "Sharing…",
+  copied: "Link copied",
+  failed: "Sharing failed",
+}
 
 function SectionHeader({
   label,
@@ -55,6 +66,7 @@ export function RosterPanel({
   const available = selectAvailableAgents(config)
   const inUse = selectAgentsInUse(config, added)
   const stats = summarize(config)
+  const { state: shareState, share } = useShareLink(config)
 
   return (
     <aside className="sticky top-0 flex h-svh flex-col overflow-hidden border-l border-divider pt-gutter pr-2.5 pb-6 pl-4">
@@ -136,6 +148,15 @@ export function RosterPanel({
           {stats.skillCount} skills · {stats.agentCount} sub-agents ·{" "}
           {stats.assignmentCount} assignments · {stats.preloadedCount} preloaded
         </p>
+        {/* Copies a `?fromId=` link; the button itself is the only feedback
+            surface, so its label narrates the outcome and decays to idle. */}
+        <Button
+          className="mb-2 w-full"
+          disabled={shareState === "sharing" || stats.skillCount === 0}
+          onClick={() => void share()}
+        >
+          {SHARE_LABELS[shareState]}
+        </Button>
         <Button variant="full" onClick={() => setDialog("install")}>
           Install
         </Button>

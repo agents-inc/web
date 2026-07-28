@@ -28,6 +28,9 @@ type ConfigActions = {
   setSkillOption: (skillId: string, patch: Partial<SkillOptions>) => void
   // empty → lazy → preloaded → empty, per the design's matrix cell.
   cycleAssignment: (skillId: string, agentId: string) => void
+  // The inbound half of sharing: a fetched config replaces the selection
+  // wholesale, exactly as applying a stack does.
+  importConfig: (config: PersistedConfig) => void
   reset: () => void
 }
 
@@ -237,6 +240,8 @@ export const useConfigStore = create<ConfigState>()(
             },
           }
         }),
+
+      importConfig: (config) => set({ ...config }),
 
       reset: () => set({ ...EMPTY }),
     }),

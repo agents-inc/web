@@ -5,6 +5,8 @@ import {
   type SeedPayload,
 } from "@workspace/matrix"
 
+import { pruneUnknownIds, type PersistedConfig } from "@/stores/persisted-schema"
+
 import type { ConfigSelection } from "./derive"
 
 // Builds the exact JSON the config store (Cloudflare KV) will hold: the
@@ -19,4 +21,14 @@ export const toSeedPayload = (config: ConfigSelection): SeedPayload =>
     matrixVersion: MATRIX_VERSION,
     stackId: config.stackId,
     skills: config.skills,
+  })
+
+// The inbound half. A payload may have been minted against any matrix version,
+// so ids this catalog does not know are pruned — the same skip-don't-fail
+// policy the CLI will apply. `remembered` starts empty: it never travels.
+export const fromSeedPayload = (payload: SeedPayload): PersistedConfig =>
+  pruneUnknownIds({
+    stackId: payload.stackId,
+    skills: payload.skills,
+    remembered: {},
   })

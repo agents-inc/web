@@ -22,7 +22,13 @@ import {
 // Each of those is one browser round-trip end-to-end and microseconds here, so
 // the browser covers that the wiring works and these cover that the sums do.
 
-const SEARCH: ConfigureSearch = { domain: null, q: "", rec: false, sel: false }
+const SEARCH: ConfigureSearch = {
+  domain: null,
+  q: "",
+  rec: false,
+  sel: false,
+  fromId: "",
+}
 const search = (over: Partial<ConfigureSearch> = {}): ConfigureSearch => ({
   ...SEARCH,
   ...over,

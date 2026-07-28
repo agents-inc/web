@@ -1,9 +1,10 @@
 import { getRouteApi } from "@tanstack/react-router"
 import { STACKS } from "@workspace/matrix"
 import { Hinge } from "@workspace/ui/components/divider"
-import { useMemo } from "react"
+import { useCallback, useMemo } from "react"
 
 import { selectDomainViews } from "@/features/configure/lib/derive"
+import { useSharedImport } from "@/features/configure/lib/use-shared-import"
 import { useAddedSkillsStore } from "@/stores/added-skills-store"
 import { useConfigStore } from "@/stores/config-store"
 import { AddSkillDialog } from "./add-skill-dialog"
@@ -18,9 +19,20 @@ const route = getRouteApi("/")
 
 export function ConfigureScreen() {
   const search = route.useSearch()
+  const navigate = route.useNavigate()
   const skills = useConfigStore((state) => state.skills)
   const stackId = useConfigStore((state) => state.stackId)
   const added = useAddedSkillsStore((state) => state.added)
+
+  const clearFromId = useCallback(
+    () =>
+      void navigate({
+        search: (prev) => ({ ...prev, fromId: "" }),
+        replace: true,
+      }),
+    [navigate]
+  )
+  const importError = useSharedImport(search.fromId, clearFromId)
 
   const config = useMemo(() => ({ stackId, skills }), [stackId, skills])
   const domainViews = useMemo(
@@ -33,6 +45,15 @@ export function ConfigureScreen() {
   return (
     <>
       <main className="min-w-0 bg-column px-gutter pt-0 pb-30">
+        {importError && (
+          <p
+            role="alert"
+            className="pt-4 font-mono text-11 text-muted-foreground italic"
+          >
+            {importError} — showing your own configuration instead.
+          </p>
+        )}
+
         <Hinge label="choose your stack" />
         <StackGrid />
 

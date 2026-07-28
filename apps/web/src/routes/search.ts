@@ -18,6 +18,10 @@ export const configureSearchSchema = z.object({
   rec: z.boolean().catch(false),
   // Narrow to what you have actually chosen — a review pass over your setup.
   sel: z.boolean().catch(false),
+  // The exception to "view state only": a share-link id, consumed once — the
+  // config it names is fetched into the store, then the param is stripped so a
+  // reload shows your subsequent edits rather than the snapshot again.
+  fromId: z.string().trim().max(64).catch(""),
 })
 
 export type ConfigureSearch = z.infer<typeof configureSearchSchema>
@@ -28,4 +32,5 @@ export const CONFIGURE_SEARCH_DEFAULTS: ConfigureSearch = {
   q: "",
   rec: false,
   sel: false,
+  fromId: "",
 }

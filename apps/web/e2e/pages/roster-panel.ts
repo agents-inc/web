@@ -6,6 +6,7 @@ export class RosterPanel {
   readonly root: Locator
   readonly summary: Locator
   readonly installButton: Locator
+  readonly shareButton: Locator
   readonly availableSection: Locator
   readonly inUseSection: Locator
 
@@ -13,6 +14,9 @@ export class RosterPanel {
     this.root = page.getByRole("complementary")
     this.summary = this.root.locator("p").last()
     this.installButton = this.root.getByRole("button", { name: "Install" })
+    // Its accessible name narrates the share lifecycle ("Share", "Link
+    // copied", …), so specs asserting an outcome locate it by that state.
+    this.shareButton = this.root.getByRole("button", { name: "Share" })
     this.availableSection = this.root.getByRole("button", {
       name: /Available sub-agents/,
     })
