@@ -1,10 +1,10 @@
 import { CATALOG, STACKS, SUB_AGENTS_BY_ID } from "@workspace/matrix"
 import { z } from "zod"
 
-/** Bump when the persisted shape changes, and add a case to `migrateConfig`. */
+// Bump when the persisted shape changes, and add a case to `migrateConfig`.
 export const PERSIST_VERSION = 3
 
-/** Not assigned is the absence of a key, so only the two live states appear. */
+// Not assigned is the absence of a key, so only the two live states appear.
 export const loadStateSchema = z.enum(["lazy", "preloaded"])
 
 export const skillEntrySchema = z.object({
@@ -12,37 +12,18 @@ export const skillEntrySchema = z.object({
   effort: z.enum(["none", "low", "med", "high"]),
   install: z.enum(["plugin", "eject"]),
   scope: z.enum(["project", "global"]),
-  /**
-   * Sub-agent id → how that agent loads the skill. This is the *single source
-   * of truth* for assignment: the per-cell agent count, the roster panel and
-   * the install inventory are all derived from it and none of them store their
-   * own copy. The v1 shape kept `agents: string[]` beside a skill-wide
-   * `preloaded: boolean`, which could not express "preloaded for the tester,
-   * lazy for the developer" — the granularity the CLI actually has.
-   */
+  // Sub-agent id → how that agent loads the skill. The single source of truth
+  // for assignment; every count and list on screen is derived from it.
   assignments: z.record(z.string(), loadStateSchema),
 })
 
 export const persistedConfigSchema = z.object({
   stackId: z.string().nullable(),
-  /**
-   * Sparse — presence in this map *is* selection, so there is no `selected`
-   * flag to keep in sync with it. Ids are plain strings rather than
-   * `z.enum(SKILL_IDS)` because an id that vanished from a regenerated catalog
-   * is a pruning concern, not a shape error: one stale id should not throw
-   * away an otherwise-valid saved configuration.
-   */
+  // Sparse — presence is selection. Ids stay plain strings so one id dropped
+  // from a regenerated catalog is pruned rather than failing the whole parse.
   skills: z.record(z.string(), skillEntrySchema),
-  /**
-   * Configuration for skills that are *not currently selected*, kept so that
-   * deselecting is not destructive: nine sub-agent assignments take a dozen
-   * clicks to build and one misclick to lose, and the cell gives no warning
-   * because deselect reads as "not included" rather than "erase my work".
-   *
-   * Only entries worth keeping land here — see `isWorthRemembering`. Without
-   * that guard this map would grow monotonically with every cell ever clicked
-   * while holding nothing anyone would miss.
-   */
+  // Configuration for skills that are not selected, so deselecting a dozen
+  // clicks of setup is not destructive. Only entries worth keeping land here.
   remembered: z.record(z.string(), skillEntrySchema),
 })
 
@@ -51,12 +32,8 @@ export type SkillEntry = z.infer<typeof skillEntrySchema>
 export type PersistedConfig = z.infer<typeof persistedConfigSchema>
 export type SkillOptions = Omit<SkillEntry, "assignments">
 
-/**
- * What a freshly-selected skill looks like before the user touches the panel.
- * Shared so `isStackCustom` compares against the same defaults `applyStack`
- * writes. `sonnet` / `med` are the design's resting values for the two
- * segmented rows that have no "off" position.
- */
+// Shared so `isStackCustom` compares against what `applyStack` writes.
+// `sonnet` / `med` are the resting values of the two segments with no "off".
 export const DEFAULT_SKILL_OPTIONS = {
   model: "sonnet",
   effort: "med",
@@ -64,17 +41,9 @@ export const DEFAULT_SKILL_OPTIONS = {
   scope: "project",
 } as const satisfies SkillOptions
 
-/**
- * Does this entry carry any information at all?
- *
- * The test is not "did the user customise it" — a skill applied by a stack
- * arrives with its sub-agent assignments already populated, and losing those
- * to a stray click is exactly what this guard exists to prevent. What is
- * dropped is the genuinely empty entry: default options, no assignments, which
- * is what a blank skill selected and immediately deselected looks like.
- * Restoring one of those is indistinguishable from creating it fresh, so
- * keeping it would grow the map with every cell ever clicked for no benefit.
- */
+// Does this entry carry any information at all? Not "did the user customise
+// it" — a stack-applied skill arrives with assignments and must be kept. Only
+// the empty entry is dropped, since restoring one equals creating it fresh.
 export const isWorthRemembering = (entry: SkillEntry) =>
   Object.keys(entry.assignments).length > 0 ||
   entry.model !== DEFAULT_SKILL_OPTIONS.model ||
@@ -91,41 +60,37 @@ export const persistedUiSchema = z.object({
 
 export type PersistedUi = z.infer<typeof persistedUiSchema>
 
-/**
- * Drops references the current catalog no longer knows about. The catalog is
- * regenerated from the CLI, so skills and stacks come and go between releases
- * while a user's localStorage does not.
- *
- * Session-added skills are deliberately *not* rescued here: they are never
- * written to the persisted map in the first place (see `config-store`), so a
- * reload drops them, which is the intended behaviour for now.
- */
+// Drops references the regenerated catalog no longer knows. Session-added
+// skills are never persisted in the first place, so none reach here.
+const isKnownSkill = (skillId: string) => skillId in CATALOG.skillsById
+const isKnownAgent = (agentId: string) => agentId in SUB_AGENTS_BY_ID
+const isKnownStack = (stackId: string | null) =>
+  STACKS.some((stack) => stack.id === stackId)
+
+const pruneAssignments = (assignments: SkillEntry["assignments"]) =>
+  Object.fromEntries(
+    Object.entries(assignments).filter(([agentId]) => isKnownAgent(agentId))
+  )
+
+const pruneEntry = (entry: SkillEntry): SkillEntry => ({
+  ...entry,
+  assignments: pruneAssignments(entry.assignments),
+})
+
 const pruneSkillMap = (skills: PersistedConfig["skills"]) =>
   Object.fromEntries(
     Object.entries(skills)
-      .filter(([skillId]) => skillId in CATALOG.skillsById)
-      .map(([skillId, entry]) => [
-        skillId,
-        {
-          ...entry,
-          assignments: Object.fromEntries(
-            Object.entries(entry.assignments).filter(
-              ([agentId]) => agentId in SUB_AGENTS_BY_ID
-            )
-          ),
-        },
-      ])
+      .filter(([skillId]) => isKnownSkill(skillId))
+      .map(([skillId, entry]) => [skillId, pruneEntry(entry)])
   )
 
 export const pruneUnknownIds = (config: PersistedConfig): PersistedConfig => ({
-  stackId: STACKS.some((stack) => stack.id === config.stackId)
-    ? config.stackId
-    : null,
+  stackId: isKnownStack(config.stackId) ? config.stackId : null,
   skills: pruneSkillMap(config.skills),
   remembered: pruneSkillMap(config.remembered),
 })
 
-/** The v1 shape, kept only so the v1 → v2 migration can read it. */
+// The v1 shape, kept only so the v1 → v2 migration can read it.
 const persistedConfigV1Schema = z.object({
   stackId: z.string().nullable(),
   targetAgentIds: z.array(z.string()).optional(),
@@ -141,12 +106,25 @@ const persistedConfigV1Schema = z.object({
   ),
 })
 
-/**
- * v1 → v2 folds `agents[]` + a skill-wide `preloaded` flag into per-agent load
- * states, and adds the two options the v5 options panel introduced. A v1 entry
- * that was explicitly deselected is dropped rather than migrated, because in
- * v2 presence in the map is what selection means.
- */
+// Folds `agents[]` + a skill-wide `preloaded` into per-agent load states. A
+// deselected v1 entry is dropped, since in v2 presence is what selection means.
+type V1Entry = z.infer<typeof persistedConfigV1Schema>["skills"][string]
+
+const wasSelected = ([, entry]: [string, V1Entry]) => entry.selected
+
+// v1 recorded one flag for the whole skill; v2 records one state per agent.
+const toV2Assignments = (entry: V1Entry): SkillEntry["assignments"] => {
+  const load: LoadState = entry.preloaded ? "preloaded" : "lazy"
+  return Object.fromEntries(entry.agents.map((agentId) => [agentId, load]))
+}
+
+const toV2Entry = (entry: V1Entry): SkillEntry => ({
+  ...DEFAULT_SKILL_OPTIONS,
+  install: entry.install,
+  scope: entry.scope,
+  assignments: toV2Assignments(entry),
+})
+
 const migrateV1ToV2 = (state: unknown): unknown => {
   const parsed = persistedConfigV1Schema.safeParse(state)
   if (!parsed.success) return undefined
@@ -155,38 +133,17 @@ const migrateV1ToV2 = (state: unknown): unknown => {
     stackId: parsed.data.stackId,
     skills: Object.fromEntries(
       Object.entries(parsed.data.skills)
-        .filter(([, entry]) => entry.selected)
-        .map(([skillId, entry]) => [
-          skillId,
-          {
-            ...DEFAULT_SKILL_OPTIONS,
-            install: entry.install,
-            scope: entry.scope,
-            assignments: Object.fromEntries(
-              entry.agents.map((agentId) => [
-                agentId,
-                entry.preloaded ? "preloaded" : "lazy",
-              ])
-            ),
-          },
-        ])
+        .filter(wasSelected)
+        .map(([skillId, entry]) => [skillId, toV2Entry(entry)])
     ),
   }
 }
 
-/**
- * v2 → v3 introduces `remembered`. Nothing existing maps into it — a v2 config
- * simply had nowhere to keep the configuration of a deselected skill — so it
- * starts empty.
- */
+// v2 had nowhere to keep a deselected skill's configuration, so it starts empty.
 const migrateV2ToV3 = (state: unknown): unknown =>
   state && typeof state === "object" ? { ...state, remembered: {} } : undefined
 
-/**
- * The exhaustive switch means adding PERSIST_VERSION 4 without writing its
- * migration is a type error, not silent data loss. Returning `undefined`
- * discards the persisted state, which `merge` then replaces with defaults.
- */
+// `undefined` discards the stored state, which `merge` replaces with defaults.
 export const migrateConfig = (state: unknown, fromVersion: number): unknown => {
   switch (fromVersion) {
     case 1:

@@ -1,4 +1,9 @@
-import { CATALOG, expandStack, type SkillId } from "@workspace/matrix"
+import {
+  CATALOG,
+  expandStack,
+  type SkillId,
+  type StackExpansion,
+} from "@workspace/matrix"
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
@@ -17,43 +22,23 @@ import {
 } from "./persisted-schema"
 
 type ConfigActions = {
-  /** Replaces the whole selection. `null` is "Start from scratch". */
+  // Replaces the whole selection. `null` is "Start from scratch".
   applyStack: (stackId: string | null) => void
   toggleSkill: (skillId: string) => void
   setSkillOption: (skillId: string, patch: Partial<SkillOptions>) => void
-  /** empty → lazy → preloaded → empty, per the design's matrix cell. */
+  // empty → lazy → preloaded → empty, per the design's matrix cell.
   cycleAssignment: (skillId: string, agentId: string) => void
   reset: () => void
 }
 
 export type ConfigState = PersistedConfig & ConfigActions
 
+type SkillMap = PersistedConfig["skills"]
+type Assignments = SkillEntry["assignments"]
+
 const NEW_ENTRY: SkillEntry = { ...DEFAULT_SKILL_OPTIONS, assignments: {} }
 
 const EMPTY: PersistedConfig = { stackId: null, skills: {}, remembered: {} }
-
-/**
- * Moves a skill out of the selection without discarding what the user built.
- *
- * Deselecting costs one click; the configuration behind it can be a dozen —
- * nine sub-agent assignments, a model, an effort. Dropping that silently makes
- * a misclick destructive with no undo, so a deselected entry is set aside and
- * restored if the skill comes back. Entries carrying no decisions are not
- * worth keeping and are simply dropped, which is what stops this map from
- * growing with every cell ever clicked.
- */
-const setAside = (
-  remembered: PersistedConfig["remembered"],
-  skillId: string,
-  entry: SkillEntry | undefined
-) => {
-  if (!entry) return remembered
-  if (!isWorthRemembering(entry)) {
-    const { [skillId]: _forgotten, ...rest } = remembered
-    return rest
-  }
-  return { ...remembered, [skillId]: entry }
-}
 
 const NEXT_LOAD_STATE: Record<string, LoadState | undefined> = {
   "": "lazy",
@@ -61,50 +46,136 @@ const NEXT_LOAD_STATE: Record<string, LoadState | undefined> = {
   preloaded: undefined,
 }
 
-/**
- * A skill id is legitimate if the catalog knows it *or* the user added it this
- * session. Keeping the guard is what stops a stale id from a previous release
- * surviving in localStorage as an uninstallable entry; widening it to the
- * session set is what lets a just-added skill be selected at all.
- */
+// ── Plain helpers ────────────────────────────────────────────────────────
+
+const withoutKey = <T>(record: Record<string, T>, key: string) => {
+  const { [key]: _removed, ...rest } = record
+  return rest
+}
+
+const partition = <T>(items: readonly T[], matches: (item: T) => boolean) => {
+  const matched: T[] = []
+  const rest: T[] = []
+
+  for (const item of items) {
+    if (matches(item)) matched.push(item)
+    else rest.push(item)
+  }
+
+  return [matched, rest] as const
+}
+
+// ── Catalog questions ────────────────────────────────────────────────────
+
+// The catalog, or the session. The guard stops a stale id from a previous
+// release surviving in storage; the session half lets an added skill be picked.
 const isKnownSkill = (skillId: string) =>
   skillId in CATALOG.skillsById ||
   useAddedSkillsStore.getState().isAdded(skillId)
 
-/**
- * In an exclusive category (framework, meta-framework, …) picking an option
- * replaces the previous one rather than adding to it — the same radio
- * behaviour the CLI wizard has, and what the design means by `one of`.
- */
+const isInCategory = (skillId: string, categoryId: string) =>
+  CATALOG.skillsById[skillId]?.categoryId === categoryId
+
+// The skill's category, but only when picking one replaces the others.
+const exclusiveCategoryOf = (skillId: string) => {
+  const categoryId = CATALOG.skillsById[skillId]?.categoryId
+  if (!categoryId) return undefined
+
+  return CATALOG.categoriesById[categoryId]?.exclusive ? categoryId : undefined
+}
+
+// ── Selection transforms ─────────────────────────────────────────────────
+
+// Deselecting costs one click; the configuration behind it can be a dozen, so
+// it is set aside rather than dropped. Empty entries are not worth keeping.
+const setAside = (
+  remembered: SkillMap,
+  skillId: string,
+  entry: SkillEntry | undefined
+) => {
+  if (!entry) return remembered
+  if (!isWorthRemembering(entry)) return withoutKey(remembered, skillId)
+
+  return { ...remembered, [skillId]: entry }
+}
+
+// `one of`: picking replaces rather than adds. An eviction is a deselection
+// the user did not click, so it keeps the same promise — swap back and it returns.
 const clearExclusiveSiblings = (
-  skills: PersistedConfig["skills"],
-  remembered: PersistedConfig["remembered"],
+  { skills, remembered }: PersistedConfig,
   skillId: string
 ) => {
-  const categoryId = CATALOG.skillsById[skillId]?.categoryId
-  if (!categoryId || !CATALOG.categoriesById[categoryId]?.exclusive)
-    return { skills, remembered }
+  const categoryId = exclusiveCategoryOf(skillId)
+  if (!categoryId) return { skills, remembered }
 
-  const evicted = Object.entries(skills).filter(
-    ([id]) => CATALOG.skillsById[id]?.categoryId === categoryId
+  const [evicted, kept] = partition(Object.entries(skills), ([id]) =>
+    isInCategory(id, categoryId)
   )
 
   return {
-    skills: Object.fromEntries(
-      Object.entries(skills).filter(
-        ([id]) => CATALOG.skillsById[id]?.categoryId !== categoryId
-      )
-    ),
-    // An eviction is a deselection the user did not click, so it keeps the
-    // same promise: swap React for Vue, swap back, and React returns as it was.
+    skills: Object.fromEntries(kept),
     remembered: evicted.reduce(
-      (kept, [id, entry]) => setAside(kept, id, entry),
+      (memory, [id, entry]) => setAside(memory, id, entry),
       remembered
     ),
   }
 }
 
-const onlyCatalogSkills = (skills: PersistedConfig["skills"]) =>
+const deselect = (
+  state: PersistedConfig,
+  skillId: string,
+  entry: SkillEntry
+) => ({
+  skills: withoutKey(state.skills, skillId),
+  remembered: setAside(state.remembered, skillId, entry),
+})
+
+// Restores what was set aside; a skill never configured starts blank.
+const select = (state: PersistedConfig, skillId: string) => {
+  const { skills, remembered } = clearExclusiveSiblings(state, skillId)
+
+  return {
+    skills: { ...skills, [skillId]: remembered[skillId] ?? { ...NEW_ENTRY } },
+    remembered: withoutKey(remembered, skillId),
+  }
+}
+
+const cycled = (assignments: Assignments, agentId: string) => {
+  const next = NEXT_LOAD_STATE[assignments[agentId] ?? ""]
+  if (!next) return withoutKey(assignments, agentId)
+
+  return { ...assignments, [agentId]: next }
+}
+
+// ── Stack expansion ──────────────────────────────────────────────────────
+
+const toAssignments = (
+  agentIds: readonly string[],
+  preloaded: boolean
+): Assignments => {
+  const load: LoadState = preloaded ? "preloaded" : "lazy"
+  return Object.fromEntries(agentIds.map((agentId) => [agentId, load]))
+}
+
+const toStackSkills = (expansion: StackExpansion): SkillMap => {
+  const preloaded = new Set<string>(expansion.preloadedSkillIds)
+
+  const entryFor = (skillId: string): SkillEntry => ({
+    ...DEFAULT_SKILL_OPTIONS,
+    assignments: toAssignments(
+      expansion.agentsBySkill[skillId] ?? [],
+      preloaded.has(skillId)
+    ),
+  })
+
+  return Object.fromEntries(
+    expansion.skillIds.map((skillId) => [skillId, entryFor(skillId)])
+  )
+}
+
+// ── Persistence ──────────────────────────────────────────────────────────
+
+const onlyCatalogSkills = (skills: SkillMap) =>
   Object.fromEntries(
     Object.entries(skills).filter(([skillId]) => skillId in CATALOG.skillsById)
   )
@@ -116,73 +187,36 @@ export const useConfigStore = create<ConfigState>()(
 
       applyStack: (stackId) => {
         if (stackId === null) {
-          set({ stackId: null, skills: {}, remembered: {} })
+          set({ ...EMPTY })
           return
         }
 
         const expansion = expandStack(stackId)
         if (!expansion) return
 
-        const preloaded = new Set<string>(expansion.preloadedSkillIds)
         set({
           stackId,
-          // Applying a stack is the explicit start-over action — it already
-          // confirms first when edits would be lost — so nothing is carried
-          // across from the previous configuration.
+          skills: toStackSkills(expansion),
+          // The explicit start-over action, which already confirms first.
           remembered: {},
-          skills: Object.fromEntries(
-            expansion.skillIds.map((skillId) => [
-              skillId,
-              {
-                ...DEFAULT_SKILL_OPTIONS,
-                assignments: Object.fromEntries(
-                  (expansion.agentsBySkill[skillId] ?? []).map((agentId) => [
-                    agentId,
-                    preloaded.has(skillId) ? "preloaded" : "lazy",
-                  ])
-                ),
-              } satisfies SkillEntry,
-            ])
-          ),
         })
       },
 
       toggleSkill: (skillId) =>
         set((state) => {
           const current = state.skills[skillId]
-          if (current) {
-            const { [skillId]: _removed, ...rest } = state.skills
-            return {
-              skills: rest,
-              remembered: setAside(state.remembered, skillId, current),
-            }
-          }
 
+          if (current) return deselect(state, skillId, current)
           if (!isKnownSkill(skillId)) return {}
 
-          const cleared = clearExclusiveSiblings(
-            state.skills,
-            state.remembered,
-            skillId
-          )
-          // Restore whatever this skill was last configured with. A skill that
-          // has never been configured has nothing set aside and starts blank,
-          // so there is one rule rather than a special case per category.
-          const { [skillId]: restored, ...untouched } = cleared.remembered
-
-          return {
-            skills: {
-              ...cleared.skills,
-              [skillId]: restored ?? { ...NEW_ENTRY },
-            },
-            remembered: untouched,
-          }
+          return select(state, skillId)
         }),
 
       setSkillOption: (skillId, patch) =>
         set((state) => {
           const entry = state.skills[skillId]
           if (!entry) return {}
+
           return {
             skills: { ...state.skills, [skillId]: { ...entry, ...patch } },
           }
@@ -193,38 +227,32 @@ export const useConfigStore = create<ConfigState>()(
           const entry = state.skills[skillId]
           if (!entry) return {}
 
-          const next = NEXT_LOAD_STATE[entry.assignments[agentId] ?? ""]
-          const assignments = { ...entry.assignments }
-          if (next) assignments[agentId] = next
-          else delete assignments[agentId]
-
           return {
-            skills: { ...state.skills, [skillId]: { ...entry, assignments } },
+            skills: {
+              ...state.skills,
+              [skillId]: {
+                ...entry,
+                assignments: cycled(entry.assignments, agentId),
+              },
+            },
           }
         }),
 
-      reset: () => set(EMPTY),
+      reset: () => set({ ...EMPTY }),
     }),
     {
       name: "agents-inc:config:v1",
       version: PERSIST_VERSION,
       migrate: migrateConfig,
-      /**
-       * Session-added skills are stripped on the way out. They have no catalog
-       * entry, so persisting a selection for one would resurrect a skill the
-       * next session cannot describe or install.
-       */
+      // Session-added skills have no catalog entry, so a persisted selection
+      // for one would resurrect a skill the next session cannot describe.
       partialize: ({ stackId, skills, remembered }) => ({
         stackId,
         skills: onlyCatalogSkills(skills),
         remembered: onlyCatalogSkills(remembered),
       }),
-      /**
-       * The one genuinely untrusted boundary in the app: localStorage can hold
-       * anything a previous version, another tab, or the user's devtools left
-       * behind. Anything that fails to parse is discarded in favour of the
-       * current (empty) state rather than crashing the app.
-       */
+      // The one untrusted boundary: anything unparseable is discarded in
+      // favour of empty state rather than crashing the app.
       merge: (persisted, current) => {
         const parsed = persistedConfigSchema.safeParse(persisted)
         if (!parsed.success) {
@@ -236,6 +264,7 @@ export const useConfigStore = create<ConfigState>()(
           }
           return current
         }
+
         return { ...current, ...pruneUnknownIds(parsed.data) }
       },
     }
