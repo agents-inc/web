@@ -2,7 +2,7 @@ import { CATALOG, STACKS, SUB_AGENTS_BY_ID } from "@workspace/matrix"
 import { z } from "zod"
 
 /** Bump when the persisted shape changes, and add a case to `migrateConfig`. */
-export const PERSIST_VERSION = 2
+export const PERSIST_VERSION = 3
 
 /** Not assigned is the absence of a key, so only the two live states appear. */
 export const loadStateSchema = z.enum(["lazy", "preloaded"])
@@ -33,6 +33,17 @@ export const persistedConfigSchema = z.object({
    * away an otherwise-valid saved configuration.
    */
   skills: z.record(z.string(), skillEntrySchema),
+  /**
+   * Configuration for skills that are *not currently selected*, kept so that
+   * deselecting is not destructive: nine sub-agent assignments take a dozen
+   * clicks to build and one misclick to lose, and the cell gives no warning
+   * because deselect reads as "not included" rather than "erase my work".
+   *
+   * Only entries worth keeping land here — see `isWorthRemembering`. Without
+   * that guard this map would grow monotonically with every cell ever clicked
+   * while holding nothing anyone would miss.
+   */
+  remembered: z.record(z.string(), skillEntrySchema),
 })
 
 export type LoadState = z.infer<typeof loadStateSchema>
@@ -53,6 +64,24 @@ export const DEFAULT_SKILL_OPTIONS = {
   scope: "project",
 } as const satisfies SkillOptions
 
+/**
+ * Does this entry carry any information at all?
+ *
+ * The test is not "did the user customise it" — a skill applied by a stack
+ * arrives with its sub-agent assignments already populated, and losing those
+ * to a stray click is exactly what this guard exists to prevent. What is
+ * dropped is the genuinely empty entry: default options, no assignments, which
+ * is what a blank skill selected and immediately deselected looks like.
+ * Restoring one of those is indistinguishable from creating it fresh, so
+ * keeping it would grow the map with every cell ever clicked for no benefit.
+ */
+export const isWorthRemembering = (entry: SkillEntry) =>
+  Object.keys(entry.assignments).length > 0 ||
+  entry.model !== DEFAULT_SKILL_OPTIONS.model ||
+  entry.effort !== DEFAULT_SKILL_OPTIONS.effort ||
+  entry.install !== DEFAULT_SKILL_OPTIONS.install ||
+  entry.scope !== DEFAULT_SKILL_OPTIONS.scope
+
 export const persistedUiSchema = z.object({
   rosterCollapsed: z.object({
     available: z.boolean(),
@@ -71,12 +100,9 @@ export type PersistedUi = z.infer<typeof persistedUiSchema>
  * written to the persisted map in the first place (see `config-store`), so a
  * reload drops them, which is the intended behaviour for now.
  */
-export const pruneUnknownIds = (config: PersistedConfig): PersistedConfig => ({
-  stackId: STACKS.some((stack) => stack.id === config.stackId)
-    ? config.stackId
-    : null,
-  skills: Object.fromEntries(
-    Object.entries(config.skills)
+const pruneSkillMap = (skills: PersistedConfig["skills"]) =>
+  Object.fromEntries(
+    Object.entries(skills)
       .filter(([skillId]) => skillId in CATALOG.skillsById)
       .map(([skillId, entry]) => [
         skillId,
@@ -89,7 +115,14 @@ export const pruneUnknownIds = (config: PersistedConfig): PersistedConfig => ({
           ),
         },
       ])
-  ),
+  )
+
+export const pruneUnknownIds = (config: PersistedConfig): PersistedConfig => ({
+  stackId: STACKS.some((stack) => stack.id === config.stackId)
+    ? config.stackId
+    : null,
+  skills: pruneSkillMap(config.skills),
+  remembered: pruneSkillMap(config.remembered),
 })
 
 /** The v1 shape, kept only so the v1 → v2 migration can read it. */
@@ -142,14 +175,24 @@ const migrateV1ToV2 = (state: unknown): unknown => {
 }
 
 /**
- * The exhaustive switch means adding PERSIST_VERSION 3 without writing its
+ * v2 → v3 introduces `remembered`. Nothing existing maps into it — a v2 config
+ * simply had nowhere to keep the configuration of a deselected skill — so it
+ * starts empty.
+ */
+const migrateV2ToV3 = (state: unknown): unknown =>
+  state && typeof state === "object" ? { ...state, remembered: {} } : undefined
+
+/**
+ * The exhaustive switch means adding PERSIST_VERSION 4 without writing its
  * migration is a type error, not silent data loss. Returning `undefined`
  * discards the persisted state, which `merge` then replaces with defaults.
  */
 export const migrateConfig = (state: unknown, fromVersion: number): unknown => {
   switch (fromVersion) {
     case 1:
-      return migrateV1ToV2(state)
+      return migrateV2ToV3(migrateV1ToV2(state))
+    case 2:
+      return migrateV2ToV3(state)
     case PERSIST_VERSION:
       return state
     default:

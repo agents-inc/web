@@ -21,7 +21,7 @@ import {
   type InventorySkill,
 } from "@/features/configure/lib/derive"
 import type { AddedSkill } from "@/stores/added-skills-store"
-import type { PersistedConfig } from "@/stores/persisted-schema"
+import type { ConfigSelection } from "@/features/configure/lib/derive"
 import { useUiStore } from "@/stores/ui-store"
 
 function ScopeGroup({
@@ -78,7 +78,7 @@ export function InstallDialog({
   config,
   added,
 }: {
-  config: PersistedConfig
+  config: ConfigSelection
   added: AddedSkill[]
 }) {
   const dialog = useUiStore((state) => state.dialog)

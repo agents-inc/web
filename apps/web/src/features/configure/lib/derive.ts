@@ -25,6 +25,17 @@ import {
 } from "@/stores/persisted-schema"
 
 /**
+ * What the screen derives from: the selection, and nothing else.
+ *
+ * Deliberately narrower than `PersistedConfig`. The store also holds
+ * `remembered`, the configuration of skills that are *not* selected, and no
+ * derivation may see it — a remembered skill must not appear in a grid, a
+ * roster line, a count or the install inventory. Excluding it at the type
+ * level means that cannot happen by accident.
+ */
+export type ConfigSelection = Pick<PersistedConfig, "stackId" | "skills">
+
+/**
  * A skill as the grid renders it. Catalog skills and session-added skills are
  * flattened to the same shape here so the cell component never branches on
  * provenance — only the `added` flag, which draws the tag.
@@ -154,7 +165,7 @@ export const UNCATEGORIZED_ID = "uncategorized"
  * domain.
  */
 export const selectDomainViews = (
-  config: PersistedConfig,
+  config: ConfigSelection,
   added: AddedSkill[],
   search: ConfigureSearch
 ): DomainView[] => {
@@ -272,7 +283,7 @@ const displayNameOf = (skillId: string, added: AddedSkill[]) =>
   skillId
 
 /** Every sub-agent that exists, with how many skills it holds. */
-export const selectAvailableAgents = (config: PersistedConfig) => {
+export const selectAvailableAgents = (config: ConfigSelection) => {
   const counts: Record<string, number> = {}
   for (const entry of Object.values(config.skills)) {
     for (const agentId of Object.keys(entry.assignments)) {
@@ -290,7 +301,7 @@ export const selectAvailableAgents = (config: PersistedConfig) => {
 
 /** Only the sub-agents that actually hold skills, with their skill lists. */
 export const selectAgentsInUse = (
-  config: PersistedConfig,
+  config: ConfigSelection,
   added: AddedSkill[]
 ): RosterAgent[] => {
   const byAgent = new Map<string, RosterSkill[]>()
@@ -327,7 +338,7 @@ export type ConfigSummary = {
   ejectedCount: number
 }
 
-export const summarize = (config: PersistedConfig): ConfigSummary => {
+export const summarize = (config: ConfigSelection): ConfigSummary => {
   const entries = Object.values(config.skills)
   const assignments = entries.flatMap((entry) =>
     Object.entries(entry.assignments)
@@ -358,7 +369,7 @@ export type InstallInventory = {
 }
 
 export const selectInstallInventory = (
-  config: PersistedConfig,
+  config: ConfigSelection,
   added: AddedSkill[]
 ): InstallInventory => {
   const skills = Object.entries(config.skills)
@@ -412,7 +423,7 @@ const sameAssignments = (
  * removing a skill. Flipping one skill from Plugin to Eject is an edit, so
  * options and assignments are compared too.
  */
-export const isStackCustom = (config: PersistedConfig): boolean => {
+export const isStackCustom = (config: ConfigSelection): boolean => {
   if (config.stackId === null) return Object.keys(config.skills).length > 0
 
   const expansion = expandStack(config.stackId)
