@@ -1,0 +1,103 @@
+import { CATALOG, STACKS, expandStack } from "@workspace/matrix"
+import { Lattice, LatticeCell } from "@workspace/ui/components/lattice"
+import { useMemo } from "react"
+
+import { isStackCustom } from "@/features/configure/lib/derive"
+import { useConfigStore } from "@/stores/config-store"
+import { useUiStore } from "@/stores/ui-store"
+
+type StackCell = {
+  id: string | null
+  name: string
+  members: string
+}
+
+/**
+ * The member line under each stack name — `react · next · tailwind · cva`.
+ * Computed once at module load: the catalogue is static, and doing it per
+ * render would re-expand all 17 stacks on every keystroke in the filter bar.
+ */
+const MEMBER_LIMIT = 5
+
+const stackCells: StackCell[] = [
+  {
+    id: null,
+    name: "Start from scratch",
+    members: "no stack · pick every skill yourself",
+  },
+  ...STACKS.map((stack) => {
+    const skillIds = expandStack(stack.id)?.skillIds ?? []
+    const names = skillIds
+      .map((skillId) => CATALOG.skillsById[skillId]?.displayName ?? skillId)
+      .slice(0, MEMBER_LIMIT)
+      .map((name) => name.toLowerCase())
+    return {
+      id: stack.id,
+      name: stack.name,
+      members:
+        skillIds.length > MEMBER_LIMIT
+          ? `${names.join(" · ")} · +${skillIds.length - MEMBER_LIMIT}`
+          : names.join(" · "),
+    }
+  }),
+]
+
+/**
+ * Selecting a stack replaces the whole selection, so *edits* have to be
+ * confirmed away first.
+ *
+ * The test is `isStackCustom`, not "is anything selected". A stack's own
+ * expansion is not something the user chose, so browsing from Next.js to T3 to
+ * Remix has nothing to lose and must not prompt — asking every time trains
+ * people to dismiss the dialog without reading it, which is exactly when it
+ * stops protecting the case it exists for. The prompt appears only once the
+ * configuration no longer matches what the current stack would produce.
+ */
+export function StackGrid() {
+  const stackId = useConfigStore((state) => state.stackId)
+  const skills = useConfigStore((state) => state.skills)
+  const applyStack = useConfigStore((state) => state.applyStack)
+  const requestStack = useUiStore((state) => state.requestStack)
+
+  const edited = useMemo(
+    () => isStackCustom({ stackId, skills }),
+    [stackId, skills]
+  )
+
+  const choose = (id: string | null) => {
+    if (id === stackId) return
+    if (edited) requestStack(id)
+    else applyStack(id)
+  }
+
+  return (
+    <Lattice columns={4}>
+      {stackCells.map((cell) => (
+        <LatticeCell
+          key={cell.id ?? "scratch"}
+          selected={cell.id === stackId}
+          className="px-[0.8125rem] py-[0.6875rem]"
+          role="button"
+          tabIndex={0}
+          aria-pressed={cell.id === stackId}
+          onClick={() => choose(cell.id)}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault()
+              choose(cell.id)
+            }
+          }}
+        >
+          <span className="text-12 font-semibold text-ink">{cell.name}</span>
+          <span
+            className={`mt-1 font-mono text-9 font-normal ${
+              cell.id === stackId ? "text-brand-ink" : "text-subtle"
+            }`}
+          >
+            {cell.members}
+          </span>
+        </LatticeCell>
+      ))}
+    </Lattice>
+  )
+}
