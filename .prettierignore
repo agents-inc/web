@@ -2,5 +2,10 @@ dist/
 node_modules/
 .turbo/
 coverage/
-pnpm-lock.yaml
-.pnpm-store/
+bun.lock
+
+# Copied verbatim from the agents-inc CLI, or emitted by a generator. Reformatting either would
+# create diff noise on every regeneration.
+packages/matrix/src/vendor/
+packages/matrix/src/generated/
+apps/web/src/lib/skill-icons.ts

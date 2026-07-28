@@ -1,4 +1,5 @@
 {
+  "//": "Base only. Each workspace has its own tsconfig; run typecheck from a workspace, not here.",
   "compilerOptions": {
     "target": "ES2022",
     "module": "ESNext",

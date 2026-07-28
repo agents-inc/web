@@ -2,16 +2,22 @@
   "name": "agents-inc-web-monorepo",
   "version": "0.0.1",
   "private": true,
+  "//": "Prettier is declared once, here. Prettier walks up from each file to the nearest config, so this covers every workspace including packages/*-config.",
+  "prettier": "@workspace/prettier-config",
   "scripts": {
     "build": "turbo build",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
-    "typecheck": "turbo typecheck"
+    "typecheck": "turbo typecheck",
+    "deps:check": "syncpack lint",
+    "deps:fix": "syncpack fix-mismatches"
   },
   "devDependencies": {
+    "@workspace/prettier-config": "workspace:*",
     "prettier": "^3.8.3",
     "prettier-plugin-tailwindcss": "^0.8.0",
+    "syncpack": "^15.3.2",
     "turbo": "^2.9.18",
     "typescript": "~6"
   },
