@@ -3,18 +3,16 @@ import { defineConfig, devices } from "@playwright/test"
 const PORT = 5173
 const BASE_URL = `http://localhost:${PORT}`
 
-/**
- * The configurator is a desktop-only screen with a hard 1324px `min-width`;
- * below it the page scrolls horizontally rather than reflowing. Anything
- * narrower would be testing a layout that is explicitly not designed yet, so
- * the viewport is fixed above that floor for every project.
- */
+// The configurator is a desktop-only screen with a hard 1324px `min-width`;
+// below it the page scrolls horizontally rather than reflowing. Anything
+// narrower would be testing a layout that is explicitly not designed yet, so
+// the viewport is fixed above that floor for every project.
 const VIEWPORT = { width: 1600, height: 1000 }
 
 export default defineConfig({
   testDir: "./e2e/specs",
   fullyParallel: true,
-  /** A committed `test.only` should fail the pipeline, not silently skip the suite. */
+  // A committed `test.only` should fail the pipeline, not silently skip the suite.
   forbidOnly: !!process.env.CI,
   retries: process.env.CI ? 2 : 0,
   workers: process.env.CI ? 2 : undefined,

@@ -12,15 +12,13 @@ const { name: EXCLUSIVE, first: REACT, second: VUE } = EXCLUSIVE_CATEGORY
 const MATRIX_DOMAIN = "Web"
 const MATRIX_ROLE = "dev"
 
-/**
- * Deselecting must not be destructive. One click removes a skill; the
- * configuration behind it can be a dozen, and the cell gives no warning
- * because deselect reads as "not included" rather than "erase my work".
- *
- * The rule is deliberately one sentence with no special case per category: a
- * skill remembers how you configured it, and a skill you have never configured
- * starts blank.
- */
+// Deselecting must not be destructive. One click removes a skill; the
+// configuration behind it can be a dozen, and the cell gives no warning
+// because deselect reads as "not included" rather than "erase my work".
+//
+// The rule is deliberately one sentence with no special case per category: a
+// skill remembers how you configured it, and a skill you have never configured
+// starts blank.
 test.describe("configuration survives deselection", () => {
   test("re-selecting restores install mode and scope", async ({
     configure,
@@ -75,11 +73,9 @@ test.describe("configuration survives deselection", () => {
     )
   })
 
-  /**
-   * The case that matters most: a stack hands a skill a set of sub-agent
-   * assignments the user never clicked, and losing those to a stray toggle
-   * would be exactly as costly as losing ones they built by hand.
-   */
+  // The case that matters most: a stack hands a skill a set of sub-agent
+  // assignments the user never clicked, and losing those to a stray toggle
+  // would be exactly as costly as losing ones they built by hand.
   test("a stack-provided skill keeps its assignments through a toggle", async ({
     configure,
   }) => {
@@ -129,11 +125,9 @@ test.describe("configuration survives deselection", () => {
   })
 })
 
-/**
- * An eviction is a deselection the user did not click, so it keeps the same
- * promise — while the skill replacing it has never been configured and must
- * start blank.
- */
+// An eviction is a deselection the user did not click, so it keeps the same
+// promise — while the skill replacing it has never been configured and must
+// start blank.
 test.describe("configuration survives an exclusive swap", () => {
   test("the incoming skill starts blank", async ({ configure }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
@@ -167,7 +161,7 @@ test.describe("configuration survives an exclusive swap", () => {
 })
 
 test.describe("memory boundaries", () => {
-  /** Applying a stack is the explicit start-over action. */
+  // Applying a stack is the explicit start-over action.
   test("applying a stack forgets everything set aside", async ({
     configure,
   }) => {

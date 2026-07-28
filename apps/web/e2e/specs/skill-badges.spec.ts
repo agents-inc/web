@@ -4,11 +4,9 @@ import { DOMAINS, EXCLUSIVE_CATEGORY } from "../support/catalog"
 const { web } = DOMAINS
 const { name: CATEGORY, first: SKILL } = EXCLUSIVE_CATEGORY
 
-/**
- * The two state badges on a cell. Their accessible name carries the current
- * value, so every assertion here reads the accessibility tree rather than the
- * amber styling that also signals it.
- */
+// The two state badges on a cell. Their accessible name carries the current
+// value, so every assertion here reads the accessibility tree rather than the
+// amber styling that also signals it.
 test.describe("skill state badges", () => {
   test("install mode flips between plugin and eject", async ({ configure }) => {
     const skill = configure.skillIn(web, CATEGORY, SKILL)

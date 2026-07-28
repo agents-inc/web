@@ -2,10 +2,8 @@ import { Link } from "@tanstack/react-router"
 
 import { CONFIGURE_SEARCH_DEFAULTS } from "@/routes/search"
 
-/**
- * Only Configure validates search params, so it is the one link that has to
- * supply them; the others would be a type error if they did.
- */
+// Only Configure validates search params, so it is the one link that has to
+// supply them; the others would be a type error if they did.
 const NAV_ITEMS = [
   { to: "/share", label: "Share" },
   { to: "/docs", label: "Docs" },
@@ -15,7 +13,7 @@ const NAV_ITEMS = [
 const NAV_ITEM_CLASS =
   "font-mono text-11 font-medium tracking-[.07em] whitespace-nowrap uppercase text-muted-foreground hover:text-ink data-[status=active]:font-semibold data-[status=active]:text-ink"
 
-/** The official Octocat mark — the design's only icon. */
+// The official Octocat mark — the design's only icon.
 function GitHubMark() {
   return (
     <svg
@@ -29,11 +27,9 @@ function GitHubMark() {
   )
 }
 
-/**
- * Words only — no icons, no cells, no background. The active item is ink and
- * semibold; everything else is muted. Sticky and full height so its right
- * border reads as one continuous line down the page.
- */
+// Words only — no icons, no cells, no background. The active item is ink and
+// semibold; everything else is muted. Sticky and full height so its right
+// border reads as one continuous line down the page.
 export function NavRail() {
   return (
     <nav className="sticky top-0 flex h-svh flex-col items-end border-r border-divider pt-4 pr-4 pb-6">

@@ -3,7 +3,7 @@ import { Fragment, type ComponentProps } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/** Not assigned · assigned and lazily loaded · assigned and always in context. */
+// Not assigned · assigned and lazily loaded · assigned and always in context.
 type LoadState = "lazy" | "preloaded" | null
 
 const matrixCellVariants = cva(
@@ -21,7 +21,7 @@ const matrixCellVariants = cva(
 )
 
 type MatrixCell = {
-  /** Stable key — typically the sub-agent id. */
+  // Stable key — typically the sub-agent id.
   key: string
   state: LoadState
   label: string
@@ -31,22 +31,18 @@ type MatrixCell = {
 type MatrixRow = {
   key: string
   label: string
-  /**
-   * One entry per column. `null` means no sub-agent exists for that
-   * domain × role pair — the slot stays in the grid to keep columns aligned,
-   * but renders inert.
-   */
+  // One entry per column. `null` means no sub-agent exists for that
+  // domain × role pair — the slot stays in the grid to keep columns aligned,
+  // but renders inert.
   cells: (MatrixCell | null)[]
 }
 
-/**
- * The sub-agent assignment matrix in the skill options panel: domains down the
- * left, roles across the top. Clicking a cell cycles it
- * empty → lazy → preloaded → empty, and the word in the cell *is* the state —
- * the design has no legend and no icons.
- *
- * The leading `auto` column holds the row labels; roles share the rest evenly.
- */
+// The sub-agent assignment matrix in the skill options panel: domains down the
+// left, roles across the top. Clicking a cell cycles it
+// empty → lazy → preloaded → empty, and the word in the cell *is* the state —
+// the design has no legend and no icons.
+//
+// The leading `auto` column holds the row labels; roles share the rest evenly.
 function MatrixGrid({
   className,
   columns,

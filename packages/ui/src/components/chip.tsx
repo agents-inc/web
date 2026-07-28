@@ -3,19 +3,17 @@ import type { ComponentProps } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * The bordered mono toggle. One idiom at three sizes: `filter` in the filter
- * bar (domain + recommended chips), `segment` inside the skill options panel,
- * `stage` on the add-skill result rows.
- *
- * Off is a hairline outline on nothing; on is amber ink on the accent wash
- * with an amber border. Hover only firms the border — it never goes amber,
- * because amber is reserved for what the user actually chose.
- *
- * `chipVariants` is exported for the cases that need the look without the
- * semantics: the stage marker sits inside an already-clickable row, so it must
- * render as a `<span>` rather than nest a button.
- */
+// The bordered mono toggle. One idiom at three sizes: `filter` in the filter
+// bar (domain + recommended chips), `segment` inside the skill options panel,
+// `stage` on the add-skill result rows.
+//
+// Off is a hairline outline on nothing; on is amber ink on the accent wash
+// with an amber border. Hover only firms the border — it never goes amber,
+// because amber is reserved for what the user actually chose.
+//
+// `chipVariants` is exported for the cases that need the look without the
+// semantics: the stage marker sits inside an already-clickable row, so it must
+// render as a `<span>` rather than nest a button.
 const chipVariants = cva(
   "cursor-pointer border font-mono font-medium whitespace-nowrap uppercase",
   {

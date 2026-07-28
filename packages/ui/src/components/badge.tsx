@@ -4,20 +4,18 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * The three small mono markers in the design language. All are square, all are
- * uppercase mono, and only `state` is interactive.
- *
- * `state`   — the install-mode / scope badges on a skill cell. Always present,
- *             always showing the current value; clicking flips it. The `alt`
- *             modifier is the whole point of the design's accent rule: a badge
- *             goes amber precisely when it holds a non-default value.
- * `tag`     — a static amber marker (`added`, exclusivity hints in dialogs).
- * `outline` — the `one of` / `multi` exclusivity tag beside a category label.
- *
- * Render as a `<button>` via `render` when interactive, so keyboard users get
- * the flip too; the cell click handler must be stopped from also firing.
- */
+// The three small mono markers in the design language. All are square, all are
+// uppercase mono, and only `state` is interactive.
+//
+// `state`   — the install-mode / scope badges on a skill cell. Always present,
+// always showing the current value; clicking flips it. The `alt`
+// modifier is the whole point of the design's accent rule: a badge
+// goes amber precisely when it holds a non-default value.
+// `tag`     — a static amber marker (`added`, exclusivity hints in dialogs).
+// `outline` — the `one of` / `multi` exclusivity tag beside a category label.
+//
+// Render as a `<button>` via `render` when interactive, so keyboard users get
+// the flip too; the cell click handler must be stopped from also firing.
 const badgeVariants = cva(
   "inline-flex w-fit shrink-0 items-center font-mono whitespace-nowrap uppercase",
   {
@@ -29,7 +27,7 @@ const badgeVariants = cva(
         outline:
           "border border-chip-border px-[0.3125rem] py-[0.0625rem] text-8 font-medium tracking-[.04em] text-muted-foreground",
       },
-      /** A non-default value. Only meaningful on `state`. */
+      // A non-default value. Only meaningful on `state`.
       alt: { true: "", false: "" },
       interactive: { true: "cursor-pointer", false: "" },
     },

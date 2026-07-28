@@ -12,13 +12,11 @@ import {
 import { useConfigStore } from "@/stores/config-store"
 import { useUiStore } from "@/stores/ui-store"
 
-/**
- * Applying a stack replaces every selection and assignment wholesale, so it
- * needs confirming once the user has something to lose. `StackGrid` applies
- * directly unless the configuration has been *edited* away from what the
- * current stack produces, so reaching this dialog always means real work is at
- * stake — never merely "a stack is currently applied".
- */
+// Applying a stack replaces every selection and assignment wholesale, so it
+// needs confirming once the user has something to lose. `StackGrid` applies
+// directly unless the configuration has been *edited* away from what the
+// current stack produces, so reaching this dialog always means real work is at
+// stake — never merely "a stack is currently applied".
 export function StackSwitchDialog() {
   const pendingStackId = useUiStore((state) => state.pendingStackId)
   const dismiss = useUiStore((state) => state.dismissStackRequest)

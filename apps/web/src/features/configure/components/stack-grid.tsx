@@ -12,11 +12,8 @@ type StackCell = {
   members: string
 }
 
-/**
- * The member line under each stack name — `react · next · tailwind · cva`.
- * Computed once at module load: the catalogue is static, and doing it per
- * render would re-expand all 17 stacks on every keystroke in the filter bar.
- */
+// Computed once: per render this would re-expand all 17 stacks on every
+// keystroke in the filter bar.
 const MEMBER_LIMIT = 5
 
 const stackCells: StackCell[] = [
@@ -42,17 +39,9 @@ const stackCells: StackCell[] = [
   }),
 ]
 
-/**
- * Selecting a stack replaces the whole selection, so *edits* have to be
- * confirmed away first.
- *
- * The test is `isStackCustom`, not "is anything selected". A stack's own
- * expansion is not something the user chose, so browsing from Next.js to T3 to
- * Remix has nothing to lose and must not prompt — asking every time trains
- * people to dismiss the dialog without reading it, which is exactly when it
- * stops protecting the case it exists for. The prompt appears only once the
- * configuration no longer matches what the current stack would produce.
- */
+// The test is `isStackCustom`, not "is anything selected": a stack's own
+// expansion is not something the user chose, so browsing between stacks has
+// nothing to lose. Prompting every time trains people to dismiss it unread.
 export function StackGrid() {
   const stackId = useConfigStore((state) => state.stackId)
   const skills = useConfigStore((state) => state.skills)

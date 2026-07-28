@@ -3,19 +3,17 @@ import type { ComponentProps, ReactNode } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * The shared dialog shell. Both dialogs (Install, Add skill) are the same
- * square white sheet pinned 96px from the top of the viewport — never centred
- * vertically, so a tall dialog grows downward from a fixed position rather
- * than drifting as its content changes.
- *
- * No entrance animation: the design animates the filter bar's padding and
- * nothing else. Closing is available on ✕, on the footer button and on the
- * backdrop.
- *
- * `✕` is a text glyph, not an icon — the design ships no icon set beyond the
- * GitHub mark.
- */
+// The shared dialog shell. Both dialogs (Install, Add skill) are the same
+// square white sheet pinned 96px from the top of the viewport — never centred
+// vertically, so a tall dialog grows downward from a fixed position rather
+// than drifting as its content changes.
+//
+// No entrance animation: the design animates the filter bar's padding and
+// nothing else. Closing is available on ✕, on the footer button and on the
+// backdrop.
+//
+// `✕` is a text glyph, not an icon — the design ships no icon set beyond the
+// GitHub mark.
 
 function Dialog(props: DialogPrimitive.Root.Props) {
   return <DialogPrimitive.Root data-slot="dialog" {...props} />
@@ -70,7 +68,7 @@ function DialogContent({
   )
 }
 
-/** Title · subtitle · ✕, on one baseline. */
+// Title · subtitle · ✕, on one baseline.
 function DialogHeader({
   className,
   title,
@@ -125,7 +123,7 @@ function DialogBody({
   )
 }
 
-/** The install dialog's two-column inventory. */
+// The install dialog's two-column inventory.
 function DialogPanes({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
@@ -188,7 +186,7 @@ function DialogRule({
   )
 }
 
-/** Buttons never wrap; the note beside them yields space instead. */
+// Buttons never wrap; the note beside them yields space instead.
 function DialogFooter({ className, ...props }: ComponentProps<"div">) {
   return (
     <div

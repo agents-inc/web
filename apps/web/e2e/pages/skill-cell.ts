@@ -2,11 +2,9 @@ import type { Locator, Page } from "@playwright/test"
 
 import { OptionsPanel } from "./options-panel"
 
-/**
- * One skill cell. The cell itself is the selection target; the badges, the
- * agent count and the ••• each stop propagation and do their own thing, so all
- * four are exposed separately.
- */
+// One skill cell. The cell itself is the selection target; the badges, the
+// agent count and the ••• each stop propagation and do their own thing, so all
+// four are exposed separately.
 export class SkillCell {
   readonly root: Locator
   readonly options: OptionsPanel
@@ -20,7 +18,7 @@ export class SkillCell {
     this.options = new OptionsPanel(page)
   }
 
-  /** The install-mode badge, whose accessible name carries its current value. */
+  // The install-mode badge, whose accessible name carries its current value.
   get installBadge(): Locator {
     return this.root.getByRole("button", { name: /^Install mode: / })
   }
@@ -33,7 +31,7 @@ export class SkillCell {
     return this.root.getByRole("button", { name: `Options for ${this.name}` })
   }
 
-  /** Only rendered on selected skills. */
+  // Only rendered on selected skills.
   get agentCount(): Locator {
     return this.root.getByRole("button", { name: /agents?$/ })
   }

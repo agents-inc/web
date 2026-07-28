@@ -5,12 +5,10 @@ import { DOMAIN_LABELS } from "./domains"
 import { STACKS, expandStack } from "./stacks"
 import { SUB_AGENTS_BY_ID, SUB_AGENT_GROUPS } from "./sub-agents"
 
-/**
- * The catalogue is regenerated from the agents-inc CLI, so these are
- * invariants about the *shape* the read model guarantees rather than about
- * particular skills. They are what stands between a bad regeneration and a
- * screen that renders empty categories or unreachable skills.
- */
+// The catalogue is regenerated from the agents-inc CLI, so these are
+// invariants about the *shape* the read model guarantees rather than about
+// particular skills. They are what stands between a bad regeneration and a
+// screen that renders empty categories or unreachable skills.
 
 describe("CATALOG", () => {
   it("parsed something", () => {
@@ -35,7 +33,7 @@ describe("CATALOG", () => {
     }
   })
 
-  /** An empty category renders a header with nothing under it. */
+  // An empty category renders a header with nothing under it.
   it("renders no empty categories", () => {
     for (const domain of CATALOG.domains) {
       for (const category of domain.categories) {
@@ -83,7 +81,7 @@ describe("SUB_AGENT_GROUPS", () => {
     }
   })
 
-  /** The prefix convention is what places an agent; a blank label means it failed. */
+  // The prefix convention is what places an agent; a blank label means it failed.
   it("gives every agent a non-empty label", () => {
     for (const agent of Object.values(SUB_AGENTS_BY_ID)) {
       expect(agent.label.length).toBeGreaterThan(0)
@@ -121,7 +119,7 @@ describe("expandStack", () => {
     }
   })
 
-  /** A preloaded id outside the expansion would be an assignment to nothing. */
+  // A preloaded id outside the expansion would be an assignment to nothing.
   it("preloads only skills the stack actually includes", () => {
     for (const stack of STACKS) {
       const { skillIds, preloadedSkillIds } = expandStack(stack.id)!

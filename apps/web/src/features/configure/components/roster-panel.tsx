@@ -36,13 +36,11 @@ function SectionHeader({
   )
 }
 
-/**
- * The right column: every sub-agent that exists, then the ones actually
- * holding skills with their skill lists, then the pinned footer.
- *
- * Everything here is derived from `assignments` — the panel stores nothing.
- * Load state is a word (`preloaded` / `lazy`), right-aligned, never an icon.
- */
+// The right column: every sub-agent that exists, then the ones actually
+// holding skills with their skill lists, then the pinned footer.
+//
+// Everything here is derived from `assignments` — the panel stores nothing.
+// Load state is a word (`preloaded` / `lazy`), right-aligned, never an icon.
 export function RosterPanel({
   config,
   added,

@@ -1,18 +1,10 @@
 import { useEffect, useState, type RefObject } from "react"
 
-/**
- * Is this `position: sticky` element currently pinned at its offset?
- *
- * CSS has no selector for it, and the design needs one twice: the filter bar
- * changes shape once it reaches the page top, and a domain header draws a
- * bottom rule only while it is holding the top of the column.
- *
- * Detection reads the element's own rect against its resolved `top`. Sticky
- * clamps `rect.top` to that offset while pinned and leaves it larger before, so
- * the comparison is exact. The `bottom` guard handles the far edge: once the
- * section scrolls past, the next one pushes this header up out of its offset
- * and it is no longer holding the top.
- */
+// Is this sticky element currently pinned? CSS has no selector for it.
+//
+// Sticky clamps `rect.top` to the offset while pinned and leaves it larger
+// before, so the comparison is exact. The `bottom` guard catches the far edge,
+// where the next section pushes this one up out of its offset.
 const isPinned = (element: HTMLElement) => {
   const offset = parseFloat(getComputedStyle(element).top) || 0
   const { top, bottom } = element.getBoundingClientRect()
@@ -29,11 +21,7 @@ const observe = (update: () => void) => {
   }
 }
 
-/**
- * Pinned state as React state. Only for elements whose *own* markup changes —
- * a re-render is the point. Do not reach for this to style anything outside the
- * calling component; see `usePinnedAttribute`.
- */
+// For elements whose own markup changes — a re-render is the point.
 export function usePinned(ref: RefObject<HTMLElement | null>) {
   const [pinned, setPinned] = useState(false)
 
@@ -46,19 +34,10 @@ export function usePinned(ref: RefObject<HTMLElement | null>) {
   return pinned
 }
 
-/**
- * Pinned state as a `data-pinned` attribute, written straight to the DOM.
- *
- * There are up to nine domain headers, each holding a grid of skill cells.
- * routing their pinned state through React state re-rendered every cell beneath
- * them on a property that only a border depends on — measured at an **88ms
- * blocking task with 240 cells on screen** (39ms at 97, none at 18), which is
- * what made the sticky transition look like it jumped rather than eased.
- *
- * Writing the attribute costs nothing and lets CSS do the styling, so the
- * scroll handler never touches the React tree. The write is guarded so an
- * unchanged value does not dirty style.
- */
+// Written straight to the DOM so CSS can style it without a render. Routing
+// the domain headers' pinned state through React re-rendered every cell
+// beneath them for a value only a border reads — an 88ms blocking task at 240
+// cells, which is what made the sticky transition look like it jumped.
 export function usePinnedAttribute(ref: RefObject<HTMLElement | null>) {
   useEffect(() => {
     const element = ref.current
@@ -73,11 +52,7 @@ export function usePinnedAttribute(ref: RefObject<HTMLElement | null>) {
   }, [ref])
 }
 
-/**
- * The filter bar publishes its pinned state to the document root so the domain
- * headers can re-pin beneath it (87px → 51px) in pure CSS. A store field would
- * have put every subscriber back into the render path this exists to avoid.
- */
+// Published to the root so the headers can re-pin beneath the bar in CSS.
 export const BAR_STUCK_ATTRIBUTE = "data-bar-stuck"
 
 export function useBarStuckAttribute(stuck: boolean) {

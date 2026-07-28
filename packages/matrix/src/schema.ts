@@ -51,11 +51,11 @@ export const ResolvedStackSchema = z.object({
   id: z.string(),
   name: z.string(),
   description: z.string(),
-  /** agent id → category id → skill ids */
+  // agent id → category id → skill ids
   skills: z.record(z.string(), z.record(z.string(), z.array(z.string()))),
   allSkillIds: z.array(z.string()),
   philosophy: z.string(),
-  /** Never populated by the CLI today; the stack rail groups by it when it appears. */
+  // Never populated by the CLI today; the stack rail groups by it when it appears.
   group: z.string().optional(),
 })
 

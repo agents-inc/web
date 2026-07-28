@@ -16,13 +16,11 @@ import {
   type ConfigSelection,
 } from "./derive"
 
-/**
- * `derive.ts` is where the screen's arithmetic lives, and most of it is
- * combinatorial: `isStackCustom` alone has six independent ways to flip, and
- * `selectDomainViews` crosses four filters with two provenances of skill.
- * Each of those is one browser round-trip end-to-end and microseconds here, so
- * the browser covers that the wiring works and these cover that the sums do.
- */
+// `derive.ts` is where the screen's arithmetic lives, and most of it is
+// combinatorial: `isStackCustom` alone has six independent ways to flip, and
+// `selectDomainViews` crosses four filters with two provenances of skill.
+// Each of those is one browser round-trip end-to-end and microseconds here, so
+// the browser covers that the wiring works and these cover that the sums do.
 
 const SEARCH: ConfigureSearch = { domain: null, q: "", rec: false, sel: false }
 const search = (over: Partial<ConfigureSearch> = {}): ConfigureSearch => ({
@@ -30,7 +28,7 @@ const search = (over: Partial<ConfigureSearch> = {}): ConfigureSearch => ({
   ...over,
 })
 
-/** A stack with real assignments, so the "unedited" baseline is not trivially empty. */
+// A stack with real assignments, so the "unedited" baseline is not trivially empty.
 const STACK = STACKS.find((candidate) => {
   const expansion = expandStack(candidate.id)
   return expansion && expansion.skillIds.length > 2
@@ -103,11 +101,9 @@ describe("isStackCustom", () => {
     ).toBe(true)
   })
 
-  /**
-   * Every one of these is an edit the user would be upset to lose, which is
-   * what the stack-switch confirm keys off. Comparing only the skill *set*
-   * would silently discard the other five.
-   */
+  // Every one of these is an edit the user would be upset to lose, which is
+  // what the stack-switch confirm keys off. Comparing only the skill *set*
+  // would silently discard the other five.
   it.each([
     ["install mode", { install: "eject" as const }],
     ["scope", { scope: "global" as const }],
@@ -223,7 +219,7 @@ describe("selectInstallInventory", () => {
     ])
   })
 
-  /** Insertion order would reshuffle the pane as skills are toggled. */
+  // Insertion order would reshuffle the pane as skills are toggled.
   it("orders agents by the catalog, not by which skill referenced them first", () => {
     const applied = asApplied()
     const forward = selectInstallInventory(applied, [])
@@ -353,7 +349,7 @@ describe("selectDomainViews with added skills", () => {
     expect(views.at(-1)!.categories[0]!.cells[0]!.skill.added).toBe(true)
   })
 
-  /** `isRecommended` is a catalog flag, so an added skill can never satisfy it. */
+  // `isRecommended` is a catalog flag, so an added skill can never satisfy it.
   it("hides them under the recommended filter", () => {
     const views = selectDomainViews(
       { stackId: null, skills: {} },

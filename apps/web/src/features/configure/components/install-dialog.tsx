@@ -67,13 +67,11 @@ function ScopeGroup({
   )
 }
 
-/**
- * An inventory of what will be written, then the two commands that write it.
- *
- * There is deliberately **no Install button**: installing is a CLI action, so
- * the dialog's job is to tell the user exactly what they are about to get and
- * hand them the command. The only action is Close.
- */
+// An inventory of what will be written, then the two commands that write it.
+//
+// There is deliberately **no Install button**: installing is a CLI action, so
+// the dialog's job is to tell the user exactly what they are about to get and
+// hand them the command. The only action is Close.
 export function InstallDialog({
   config,
   added,

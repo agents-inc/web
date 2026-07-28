@@ -44,12 +44,10 @@ test.describe("choosing a stack", () => {
   })
 })
 
-/**
- * The confirm exists to protect real work. A stack's own expansion is not
- * something the user chose, so browsing between stacks must not prompt —
- * a dialog that fires when nothing is at stake trains people to dismiss it
- * unread.
- */
+// The confirm exists to protect real work. A stack's own expansion is not
+// something the user chose, so browsing between stacks must not prompt —
+// a dialog that fires when nothing is at stake trains people to dismiss it
+// unread.
 test.describe("switching stacks", () => {
   test("switching from scratch does not prompt", async ({ configure }) => {
     await configure.chooseStack(STACKS.nextjs)

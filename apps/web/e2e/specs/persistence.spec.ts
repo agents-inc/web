@@ -35,7 +35,7 @@ test.describe("persistence", () => {
     ).toHaveAccessibleName("Install mode: eject")
   })
 
-  /** Corrupt storage must reset to empty rather than take the app down. */
+  // Corrupt storage must reset to empty rather than take the app down.
   test("unreadable storage falls back to an empty configuration", async ({
     configure,
     page,
@@ -57,11 +57,9 @@ test.describe("persistence", () => {
   })
 })
 
-/**
- * Added skills are session-only by design: they have no catalogue entry, so a
- * selection referencing one must not survive into a session that cannot
- * describe or install it.
- */
+// Added skills are session-only by design: they have no catalogue entry, so a
+// selection referencing one must not survive into a session that cannot
+// describe or install it.
 test.describe("session-added skills are not persisted", () => {
   test.beforeEach(async ({ page }) => {
     await mockGitHubSearch(page)

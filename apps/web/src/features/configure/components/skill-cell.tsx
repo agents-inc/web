@@ -8,14 +8,8 @@ import { useConfigStore } from "@/stores/config-store"
 import { useUiStore } from "@/stores/ui-store"
 import { SkillOptionsPanel } from "./skill-options-panel"
 
-/**
- * The core component. A rectangular cell in the collapsed lattice: monogram,
- * name, one-line library description, `•••`, then a row of state badges.
- *
- * The whole cell toggles selection, so every control inside it has to stop
- * propagation — otherwise flipping Install to Eject would also deselect the
- * skill you were configuring.
- */
+// The whole cell toggles selection, so every control inside stops propagation
+// — otherwise flipping Install to Eject would also deselect the skill.
 export function SkillCell({
   view,
   column,
@@ -38,11 +32,8 @@ export function SkillCell({
   const stop = (event: { stopPropagation: () => void }) =>
     event.stopPropagation()
 
-  /**
-   * Options only apply to a selected skill, so opening the panel on an
-   * unselected one selects it first. Without this the ••• is a dead click on
-   * every unselected cell — and the design draws it identically on all of them.
-   */
+  // Options only apply once selected, so opening selects first. Otherwise the
+  // ••• is a dead click on every unselected cell.
   const requestPanel = () => {
     if (!selected) {
       toggleSkill(skill.id)
@@ -52,18 +43,14 @@ export function SkillCell({
     togglePanel(skill.id)
   }
 
-  /** Same reasoning as `requestPanel` — a badge must never be a dead click. */
+  // Same reasoning as `requestPanel` — a badge must never be a dead click.
   const flip = (patch: Parameters<typeof setSkillOption>[1]) => {
     if (!selected) toggleSkill(skill.id)
     setSkillOption(skill.id, patch)
   }
 
-  /**
-   * Dismiss on an outside press or Escape. Bound on `pointerdown` rather than
-   * `click` so the panel is gone before the press resolves; presses *inside*
-   * this cell are ignored so the ••• button's own handler stays responsible for
-   * toggling — otherwise it would close here and immediately reopen.
-   */
+  // `pointerdown`, not `click`, so the panel is gone before the press
+  // resolves. Presses inside are ignored, or the ••• would close then reopen.
   useEffect(() => {
     if (!open) return
 
@@ -91,8 +78,7 @@ export function SkillCell({
       className={`px-3 py-[0.6875rem] ${open ? "z-58" : ""}`}
       role="button"
       tabIndex={incompatible ? -1 : 0}
-      // Without this the accessible name is the whole cell — name, description,
-      // both badges and the agent count run together as one string.
+      // Otherwise the accessible name is every string in the cell, run together.
       aria-label={skill.displayName}
       aria-pressed={selected}
       aria-disabled={incompatible || undefined}

@@ -12,16 +12,14 @@ import {
   type SkillEntry,
 } from "./persisted-schema"
 
-/**
- * localStorage is the one genuinely untrusted input the app has, and this
- * module is the boundary that reads it. It is also the only place where a bug
- * is *silent*: a broken migration does not throw, it quietly hands back a
- * configuration missing the work someone spent an afternoon on.
- *
- * Reaching these paths through the browser means hand-seeding storage with a
- * legacy blob and reloading, which is slow and awkward for one case and
- * impractical for a dozen — so they are covered here instead.
- */
+// localStorage is the one genuinely untrusted input the app has, and this
+// module is the boundary that reads it. It is also the only place where a bug
+// is *silent*: a broken migration does not throw, it quietly hands back a
+// configuration missing the work someone spent an afternoon on.
+//
+// Reaching these paths through the browser means hand-seeding storage with a
+// legacy blob and reloading, which is slow and awkward for one case and
+// impractical for a dozen — so they are covered here instead.
 
 const KNOWN_SKILL = Object.keys(CATALOG.skillsById)[0]!
 const OTHER_SKILL = Object.keys(CATALOG.skillsById)[1]!
@@ -57,11 +55,9 @@ describe("isWorthRemembering", () => {
     expect(isWorthRemembering(entry(over))).toBe(true)
   })
 
-  /**
-   * The case the guard exists for. A stack hands a skill its assignments
-   * without the user clicking anything, and losing those to a stray toggle is
-   * exactly as costly as losing ones built by hand.
-   */
+  // The case the guard exists for. A stack hands a skill its assignments
+  // without the user clicking anything, and losing those to a stray toggle is
+  // exactly as costly as losing ones built by hand.
   it("keeps a stack-provided entry whose only content is assignments", () => {
     const stackProvided = entry({ assignments: { [KNOWN_AGENT]: "preloaded" } })
 
@@ -112,7 +108,7 @@ describe("pruneUnknownIds", () => {
     )
   })
 
-  /** The map added in v3 is just as exposed to catalogue drift as `skills`. */
+  // The map added in v3 is just as exposed to catalogue drift as `skills`.
   it("prunes remembered entries by the same rules", () => {
     const pruned = pruneUnknownIds(
       config({
@@ -180,7 +176,7 @@ describe("migrateConfig", () => {
     })
   })
 
-  /** v2 made presence in the map mean selection, so a `selected: false` entry has no home. */
+  // v2 made presence in the map mean selection, so a `selected: false` entry has no home.
   it("drops v1 entries that were explicitly deselected", () => {
     const migrated = persistedConfigSchema.parse(
       migrateConfig(structuredClone(v1), 1)

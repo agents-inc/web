@@ -4,9 +4,9 @@ import { persist } from "zustand/middleware"
 import { persistedUiSchema } from "./persisted-schema"
 
 type UiState = {
-  /** Which skill's ••• options panel is showing. Only one at a time. */
+  // Which skill's ••• options panel is showing. Only one at a time.
   openPanelSkillId: string | null
-  /** Stack awaiting confirmation because applying it would discard edits. */
+  // Stack awaiting confirmation because applying it would discard edits.
   pendingStackId: string | null | undefined
   dialog: "none" | "install" | "add"
   rosterCollapsed: { available: boolean; inUse: boolean }
@@ -48,7 +48,7 @@ export const useUiStore = create<UiState>()(
     {
       name: "agents-inc:ui:v1",
       version: 2,
-      /** Everything else is ephemeral — reloading into an open panel or dialog is never right. */
+      // Everything else is ephemeral — reloading into an open panel or dialog is never right.
       partialize: ({ rosterCollapsed }) => ({ rosterCollapsed }),
       merge: (persisted, current) => {
         const parsed = persistedUiSchema.safeParse(persisted)

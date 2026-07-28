@@ -1,14 +1,14 @@
 import type { Locator, Page } from "@playwright/test"
 
-/** What will be written, then the commands that write it. No install action. */
+// What will be written, then the commands that write it. No install action.
 export class InstallDialog {
   readonly root: Locator
   readonly skillsPane: Locator
   readonly agentsPane: Locator
   readonly footerNote: Locator
-  /** The footer action. Shares its accessible name with the header ✕. */
+  // The footer action. Shares its accessible name with the header ✕.
   readonly closeButton: Locator
-  /** The header ✕. */
+  // The header ✕.
   readonly dismissButton: Locator
 
   constructor(page: Page) {
@@ -33,7 +33,7 @@ export class InstallDialog {
   }
 }
 
-/** Targeted GitHub search, staged into pills, committed together. */
+// Targeted GitHub search, staged into pills, committed together.
 export class AddSkillDialog {
   readonly root: Locator
   readonly searchInput: Locator
@@ -47,7 +47,7 @@ export class AddSkillDialog {
     this.cancelButton = this.root.getByRole("button", { name: "Cancel" })
   }
 
-  /** Result rows are the add-skill lattice; the repo name identifies one. */
+  // Result rows are the add-skill lattice; the repo name identifies one.
   result(fullName: string): Locator {
     return this.root
       .locator('[data-slot="lattice-row"]')
@@ -79,7 +79,7 @@ export class AddSkillDialog {
   }
 }
 
-/** Only reached once the configuration has actually been edited. */
+// Only reached once the configuration has actually been edited.
 export class StackSwitchDialog {
   readonly root: Locator
   readonly confirmButton: Locator

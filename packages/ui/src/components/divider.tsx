@@ -2,16 +2,14 @@ import type { ComponentProps, ReactNode } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * The page has exactly two kinds of horizontal rule (design language rule 5),
- * and both live here.
- *
- * Both bleed out of the main column's 60px padding with `-mx-gutter` so they
- * touch the vertical dividers of the nav rail and roster, making the three
- * columns read as one lattice rather than three stacked panels.
- */
+// The page has exactly two kinds of horizontal rule (design language rule 5),
+// and both live here.
+//
+// Both bleed out of the main column's 60px padding with `-mx-gutter` so they
+// touch the vertical dividers of the nav rail and roster, making the three
+// columns read as one lattice rather than three stacked panels.
 
-/** A labelled section divider: a 60px rule stub, the label, then a full rule. */
+// A labelled section divider: a 60px rule stub, the label, then a full rule.
 function Hinge({
   className,
   label,
@@ -19,7 +17,7 @@ function Hinge({
   ...props
 }: Omit<ComponentProps<"div">, "children"> & {
   label: string
-  /** The tail of the label, set in ink rather than muted. */
+  // The tail of the label, set in ink rather than muted.
   emphasis?: ReactNode
 }) {
   return (
@@ -41,7 +39,7 @@ function Hinge({
   )
 }
 
-/** An unlabelled full-bleed rule — used only between domain sections. */
+// An unlabelled full-bleed rule — used only between domain sections.
 function Rule({ className, ...props }: ComponentProps<"div">) {
   return (
     <div

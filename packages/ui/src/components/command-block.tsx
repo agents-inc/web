@@ -2,14 +2,12 @@ import type { ComponentProps } from "react"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * A shell command the user is expected to copy — the install dialog's whole
- * point, since installing is a CLI action and the dialog deliberately has no
- * Install button.
- *
- * The `$` is decoration, not content: it is marked `aria-hidden` and sits
- * outside the `<code>` so selecting the line copies only the command.
- */
+// A shell command the user is expected to copy — the install dialog's whole
+// point, since installing is a CLI action and the dialog deliberately has no
+// Install button.
+//
+// The `$` is decoration, not content: it is marked `aria-hidden` and sits
+// outside the `<code>` so selecting the line copies only the command.
 function CommandBlock({
   className,
   children,

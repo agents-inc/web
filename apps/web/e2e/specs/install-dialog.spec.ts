@@ -40,7 +40,7 @@ test.describe("install dialog", () => {
     ).toBeVisible()
   })
 
-  /** Installing is a CLI action, so the only button is Close. */
+  // Installing is a CLI action, so the only button is Close.
   test("offers no install action", async ({ configure }) => {
     await expect(
       configure.installDialog.root.getByRole("button", { name: /^Install$/ })

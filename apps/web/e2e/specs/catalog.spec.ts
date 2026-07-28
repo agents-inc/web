@@ -6,12 +6,10 @@ import {
   STACKS,
 } from "../support/catalog"
 
-/**
- * The catalogue is regenerated from the agents-inc CLI, so the fixed points the
- * other specs lean on will drift eventually. These assertions exist so that
- * drift surfaces as one failure naming the value that moved, rather than as
- * every other spec going red at once.
- */
+// The catalogue is regenerated from the agents-inc CLI, so the fixed points the
+// other specs lean on will drift eventually. These assertions exist so that
+// drift surfaces as one failure naming the value that moved, rather than as
+// every other spec going red at once.
 test.describe("catalog assumptions", () => {
   test("the stacks the specs use are present", async ({ configure }) => {
     for (const name of Object.values(STACKS)) {

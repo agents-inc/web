@@ -3,14 +3,12 @@ import type { ComponentProps } from "react"
 import { Chip } from "@workspace/ui/components/chip"
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * A row of mutually-exclusive chips — Model, Thinking effort, Install mode and
- * Scope inside the skill options panel. Sections are separated by whitespace
- * only; the design uses no rules inside the panel.
- *
- * The 10px inline padding is the panel's own gutter, carried here so the four
- * call sites stay declarative.
- */
+// A row of mutually-exclusive chips — Model, Thinking effort, Install mode and
+// Scope inside the skill options panel. Sections are separated by whitespace
+// only; the design uses no rules inside the panel.
+//
+// The 10px inline padding is the panel's own gutter, carried here so the four
+// call sites stay declarative.
 function Segmented({ className, ...props }: ComponentProps<"div">) {
   return (
     <div
@@ -32,7 +30,7 @@ function SegmentedItem({
   return <Chip size="segment" active={active} {...props} />
 }
 
-/** The uppercase mono caption above a segmented row (`.c2h`). */
+// The uppercase mono caption above a segmented row (`.c2h`).
 function FieldLabel({
   className,
   first = false,

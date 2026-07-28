@@ -4,11 +4,9 @@ import { DOMAINS } from "../support/catalog"
 const BELOW_THE_BAR = 200
 const PAST_THE_BAR = 1500
 
-/**
- * The bar changes shape at the moment CSS pins it, and the domain headers
- * follow. Both states are published as attributes rather than React state, so
- * these read the attributes — which is also what the styling reads.
- */
+// The bar changes shape at the moment CSS pins it, and the domain headers
+// follow. Both states are published as attributes rather than React state, so
+// these read the attributes — which is also what the styling reads.
 test.describe("sticky filter bar", () => {
   test("is not stuck at rest", async ({ configure }) => {
     await expect.poll(() => configure.isBarStuck()).toBe(false)

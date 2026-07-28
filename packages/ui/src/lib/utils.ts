@@ -1,7 +1,7 @@
 import { clsx, type ClassValue } from "clsx"
 import { extendTailwindMerge } from "tailwind-merge"
 
-/** The design's type scale, from the `--text-*` tokens in styles/globals.css. */
+// The design's type scale, from the `--text-*` tokens in styles/globals.css.
 const FONT_SIZES = [
   "7",
   "7_5",
@@ -20,16 +20,14 @@ const FONT_SIZES = [
   "25",
 ]
 
-/**
- * tailwind-merge only knows Tailwind's stock scale, so it guesses at custom utilities — and it
- * guesses wrong for numeric ones in two ways that both show up on screen:
- *
- *   twMerge("text-sm", "text-12")               → "text-sm text-12"   both kept, CSS order decides
- *   twMerge("text-muted-foreground", "text-12") → "text-12"           colour silently dropped
- *
- * Teaching it the scale makes `text-12` win over a component's built-in `text-sm` and stop
- * colliding with text colours.
- */
+// tailwind-merge only knows Tailwind's stock scale, so it guesses at custom utilities — and it
+// guesses wrong for numeric ones in two ways that both show up on screen:
+//
+// twMerge("text-sm", "text-12")               → "text-sm text-12"   both kept, CSS order decides
+// twMerge("text-muted-foreground", "text-12") → "text-12"           colour silently dropped
+//
+// Teaching it the scale makes `text-12` win over a component's built-in `text-sm` and stop
+// colliding with text colours.
 const twMerge = extendTailwindMerge({
   extend: {
     classGroups: {

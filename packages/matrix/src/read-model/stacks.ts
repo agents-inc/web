@@ -8,18 +8,16 @@ export type CatalogStack = {
   name: string
   description: string
   philosophy: string
-  /** Never set by the CLI today. The stack rail renders flat until it is. */
+  // Never set by the CLI today. The stack rail renders flat until it is.
   group?: string
   skillCount: number
 }
 
-/**
- * What applying a stack means, in terms the config store can consume directly.
- * Deliberately not the store's own shape — this package knows nothing about the app.
- */
+// What applying a stack means, in terms the config store can consume directly.
+// Deliberately not the store's own shape — this package knows nothing about the app.
 export type StackExpansion = {
   skillIds: SkillId[]
-  /** Which sub-agents each skill is assigned to. */
+  // Which sub-agents each skill is assigned to.
   agentsBySkill: Record<string, AgentName[]>
   preloadedSkillIds: SkillId[]
 }
@@ -36,13 +34,11 @@ export const STACKS: CatalogStack[] = parsedStacks.map((stack) => ({
   skillCount: stack.allSkillIds.length,
 }))
 
-/**
- * Expands a stack into skill selections plus their sub-agent assignments.
- *
- * `preloadedSkillIds` comes from STACK_PRELOADS rather than the stack itself: resolving a stack
- * into `BUILT_IN_MATRIX.suggestedStacks` flattens `SkillAssignment[]` to `SkillId[]` and loses
- * the flag. See packages/matrix/src/generated/stack-preloads.ts.
- */
+// Expands a stack into skill selections plus their sub-agent assignments.
+//
+// `preloadedSkillIds` comes from STACK_PRELOADS rather than the stack itself: resolving a stack
+// into `BUILT_IN_MATRIX.suggestedStacks` flattens `SkillAssignment[]` to `SkillId[]` and loses
+// the flag. See packages/matrix/src/generated/stack-preloads.ts.
 export const expandStack = (stackId: string): StackExpansion | undefined => {
   const stack = parsedStacks.find((candidate) => candidate.id === stackId)
   if (!stack) return undefined

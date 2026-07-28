@@ -9,7 +9,7 @@ import { DOMAIN_LABELS, compareDomains } from "./domains"
 
 export type SubAgent = {
   id: AgentName
-  /** Label inside its domain group — "Developer" for `web-developer`. */
+  // Label inside its domain group — "Developer" for `web-developer`.
   label: string
   title: string
   description: string
@@ -26,20 +26,18 @@ export type SubAgentGroup = {
 
 const DOMAIN_IDS = new Set<string>(DOMAINS)
 
-/**
- * Agent ids are `<domain>-<role>` for the 18 agents that belong to a domain. The other five
- * (`agent-summoner`, `codex-keeper`, `convention-keeper`, `pattern-scout`, `skill-summoner`)
- * have no domain prefix and land in `meta`, alongside the meta-domain skills.
- *
- * The CLI's `MergedSkillsMatrix.agentDefinedDomains` would be the authoritative source, but it
- * is never populated and the CLI has it queued for deletion, so the prefix is what we have.
- */
+// Agent ids are `<domain>-<role>` for the 18 agents that belong to a domain. The other five
+// (`agent-summoner`, `codex-keeper`, `convention-keeper`, `pattern-scout`, `skill-summoner`)
+// have no domain prefix and land in `meta`, alongside the meta-domain skills.
+//
+// The CLI's `MergedSkillsMatrix.agentDefinedDomains` would be the authoritative source, but it
+// is never populated and the CLI has it queued for deletion, so the prefix is what we have.
 const domainOf = (agentId: string): Domain => {
   const prefix = agentId.split("-")[0]
   return prefix && DOMAIN_IDS.has(prefix) ? (prefix as Domain) : "meta"
 }
 
-/** Role fragments that are initialisms, so `web-pm` reads "PM" and not "Pm". */
+// Role fragments that are initialisms, so `web-pm` reads "PM" and not "Pm".
 const ACRONYMS = new Set(["pm", "ai", "api", "cli", "ui", "ux", "qa"])
 
 const titleCase = (words: string) =>
@@ -52,7 +50,7 @@ const titleCase = (words: string) =>
     )
     .join(" ")
 
-/** `web-pattern-critique` → "Pattern Critique"; `codex-keeper` → "Codex Keeper". */
+// `web-pattern-critique` → "Pattern Critique"; `codex-keeper` → "Codex Keeper".
 const labelOf = (agentId: string, domainId: Domain) =>
   agentId.startsWith(`${domainId}-`)
     ? titleCase(agentId.slice(domainId.length + 1))

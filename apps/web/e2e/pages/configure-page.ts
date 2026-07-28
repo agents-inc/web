@@ -6,15 +6,13 @@ import { SkillCell } from "./skill-cell"
 
 const CONFIGURE_URL = "/"
 
-/**
- * The Configure screen. Composed of smaller objects rather than holding every
- * locator itself — a skill cell and the options panel each have enough surface
- * to be worth their own file.
- *
- * Scoping goes through landmarks (`group`, `region`) rather than CSS, so a
- * class rename cannot break the suite and the locators double as a check that
- * the page is navigable.
- */
+// The Configure screen. Composed of smaller objects rather than holding every
+// locator itself — a skill cell and the options panel each have enough surface
+// to be worth their own file.
+//
+// Scoping goes through landmarks (`group`, `region`) rather than CSS, so a
+// class rename cannot break the suite and the locators double as a check that
+// the page is navigable.
 export class ConfigurePage {
   readonly stacks: Locator
   readonly searchInput: Locator
@@ -51,7 +49,7 @@ export class ConfigurePage {
     await this.page.evaluate(() => document.fonts.ready)
   }
 
-  /* ── Stacks ───────────────────────────────────────────────────────────── */
+  // ── Stacks ─────────────────────────────────────────────────────────────
 
   stack(name: string): Locator {
     return this.stacks.getByRole("button", { name, exact: true })
@@ -61,12 +59,12 @@ export class ConfigurePage {
     await this.stack(name).click()
   }
 
-  /** The labelled section dividers. The second carries the instructional copy. */
+  // The labelled section dividers. The second carries the instructional copy.
   hinge(label: string): Locator {
     return this.page.locator('[data-slot="hinge"]').filter({ hasText: label })
   }
 
-  /* ── Filters ──────────────────────────────────────────────────────────── */
+  // ── Filters ────────────────────────────────────────────────────────────
 
   chip(name: string): Locator {
     return this.page.getByRole("button", { name, exact: true })
@@ -80,13 +78,13 @@ export class ConfigurePage {
     await this.chip(name).click()
   }
 
-  /* ── Skills ───────────────────────────────────────────────────────────── */
+  // ── Skills ─────────────────────────────────────────────────────────────
 
   domain(label: string): Locator {
     return this.page.getByRole("region", { name: `${label} skills` })
   }
 
-  /** The sticky header row; carries `data-pinned` while it holds the top. */
+  // The sticky header row; carries `data-pinned` while it holds the top.
   domainHeader(label: string): Locator {
     return this.domain(label)
       .getByRole("heading", { name: label })
@@ -100,22 +98,22 @@ export class ConfigurePage {
     })
   }
 
-  /** Scope to a category when a skill name might repeat across domains. */
+  // Scope to a category when a skill name might repeat across domains.
   skill(name: string, scope?: Locator): SkillCell {
     return new SkillCell(this.page, name, scope)
   }
 
-  /** The common case: a named skill inside a named category of a domain. */
+  // The common case: a named skill inside a named category of a domain.
   skillIn(domainLabel: string, categoryName: string, name: string): SkillCell {
     return this.skill(name, this.category(domainLabel, categoryName))
   }
 
-  /** Every rendered skill cell, for counting what a filter left behind. */
+  // Every rendered skill cell, for counting what a filter left behind.
   get skillCells(): Locator {
     return this.page.locator('main section [data-slot="lattice-cell"]')
   }
 
-  /* ── Scroll ───────────────────────────────────────────────────────────── */
+  // ── Scroll ─────────────────────────────────────────────────────────────
 
   async scrollTo(y: number) {
     await this.page.evaluate((value) => window.scrollTo(0, value), y)
@@ -125,7 +123,7 @@ export class ConfigurePage {
     return this.page.evaluate(() => window.scrollY)
   }
 
-  /** True once the filter bar has reached the top and changed shape. */
+  // True once the filter bar has reached the top and changed shape.
   async isBarStuck() {
     return this.page.evaluate(() =>
       document.documentElement.hasAttribute("data-bar-stuck")

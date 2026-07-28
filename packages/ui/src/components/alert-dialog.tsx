@@ -4,14 +4,12 @@ import type { ComponentProps } from "react"
 import { Button } from "@workspace/ui/components/button"
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * The confirm shell, in the same square language as `Dialog` but narrower and
- * not dismissible by backdrop — the only use is the stack switch, where the
- * cost of a stray click is losing the user's whole selection.
- *
- * This screen is designed but not mocked (README § Not designed yet), so it
- * inherits the dialog metrics rather than inventing its own.
- */
+// The confirm shell, in the same square language as `Dialog` but narrower and
+// not dismissible by backdrop — the only use is the stack switch, where the
+// cost of a stray click is losing the user's whole selection.
+//
+// This screen is designed but not mocked (README § Not designed yet), so it
+// inherits the dialog metrics rather than inventing its own.
 
 function AlertDialog(props: AlertDialogPrimitive.Root.Props) {
   return <AlertDialogPrimitive.Root data-slot="alert-dialog" {...props} />

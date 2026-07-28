@@ -12,38 +12,20 @@ import {
 import type { ConfigureSearch } from "@/routes/search"
 import { useUiStore } from "@/stores/ui-store"
 
-/** The five the design chips; the catalogue's other domains still render as sections. */
+// The five the design chips; the catalogue's other domains still render as sections.
 const CHIP_DOMAINS = ["web", "api", "ai", "infra", "shared"] as const
 
-/**
- * Search · domain chips · recommended · `＋ add skill`.
- *
- * Sticky, and it changes shape when it sticks: unstuck it is an inset bordered
- * bar sitting inside the 60px gutter; stuck it loses its border, grows to the
- * full column width and sits flush with the top of the page, becoming a
- * page-wide toolbar. That padding change is the only animated transition in
- * the whole design, which is why `transition` appears here and nowhere else.
- *
- * A domain chip narrows the page to that domain and clicking the active chip
- * clears it, so the resting state renders every domain — which is what the
- * design's full-page screenshot shows.
- */
+// Sticky, and it changes shape once pinned: the border goes and the bar grows
+// to the full column width. Clicking the active domain chip clears it, so the
+// resting state renders every domain.
 export function FilterBar({ search }: { search: ConfigureSearch }) {
   const navigate = useNavigate({ from: "/" })
   const setDialog = useUiStore((state) => state.setDialog)
 
   const wrapRef = useRef<HTMLDivElement>(null)
 
-  /**
-   * `resetScroll: false` because the router scrolls to the top on every
-   * navigation by default, and a filter change *is* a navigation here — so
-   * ticking a chip from halfway down the page threw you back to the stack grid.
-   * Filtering narrows what you are already looking at; it should not move you.
-   *
-   * `replace` for the query only: typing "react" would otherwise push five
-   * history entries and take five back presses to undo. A chip is a discrete
-   * choice and stays worth a history entry.
-   */
+  // A filter change is a router navigation, which resets scroll by default.
+  // `replace` for the query only, so typing does not fill the history stack.
   const update = (patch: Partial<ConfigureSearch>) =>
     void navigate({
       search: (prev) => ({ ...prev, ...patch }),
@@ -51,17 +33,8 @@ export function FilterBar({ search }: { search: ConfigureSearch }) {
       replace: "q" in patch,
     })
 
-  /**
-   * The bar changes shape the moment CSS pins it — not at a fixed scroll
-   * offset. The prototype hardcodes `scrollY > 60` because its stack section is
-   * two rows tall; ours is five, so the bar lives ~650px down the page and that
-   * threshold made it shed its border while still sitting mid-column.
-   *
-   * Kept local. The domain headers pin *beneath* this bar and move with it
-   * (87px → 51px), but they read that from a document-root attribute in CSS
-   * rather than from a store field — a shared field put all 240 skill cells
-   * into the render path for a value only a `top` offset depends on.
-   */
+  // Local, not a store field: the domain headers follow this from a root
+  // attribute in CSS, and sharing it re-rendered all 240 cells on every flip.
   const stuck = usePinned(wrapRef)
   useBarStuckAttribute(stuck)
 
@@ -69,18 +42,10 @@ export function FilterBar({ search }: { search: ConfigureSearch }) {
     <>
       <div
         ref={wrapRef}
-        /**
-         * Only the *horizontal* padding changes when this sticks. The design
-         * collapses a 60px top padding as well, which removes 78px of document
-         * height at the exact moment the bar pins — and the browser's scroll
-         * anchoring then compensates by moving the scroll position, which
-         * un-pins the bar, which restores the padding. Measured: scrollY jumped
-         * 590 → 511 and the bar oscillated across the boundary.
-         *
-         * The 60px of air above the bar comes from the preceding hinge's bottom
-         * margin instead, so the geometry is identical while the wrapper's
-         * height is now constant and nothing perturbs the scroll position.
-         */
+        // Horizontal padding only. Collapsing the design's 60px top padding
+        // removes 78px of page height exactly as the bar pins, and scroll
+        // anchoring then un-pins it — measured oscillating at scrollY 590/511.
+        // The air above comes from the preceding hinge's margin instead.
         className={`sticky top-0 z-60 -mx-gutter bg-column pb-3 transition-[padding] duration-150 ${
           stuck ? "px-0" : "px-gutter"
         }`}
@@ -92,9 +57,8 @@ export function FilterBar({ search }: { search: ConfigureSearch }) {
             jump. Holding the gap costs nothing and the transition stays calm. */}
         <div className="flex items-stretch gap-2.5">
           <div
-            // Vertical padding is identical in both states for the same reason
-            // the wrapper's is: any height change here perturbs the scroll
-            // position at the moment of pinning. The design differs by 1px.
+            // Equal vertical padding in both states, for the same reason: any
+            // height change here perturbs scroll at the moment of pinning.
             className={`flex min-w-0 flex-1 items-center gap-3 border bg-cell py-[0.9375rem] transition-[padding] duration-150 ${
               stuck
                 ? "border-transparent pr-0 pl-gutter"
@@ -143,9 +107,7 @@ export function FilterBar({ search }: { search: ConfigureSearch }) {
 
           <Button
             variant="block"
-            // Same 150ms as the wrapper and the bar. Without it the wrapper's
-            // padding eased while these two snapped, so the pieces arrived at
-            // different times — which is what reads as jumpiness.
+            // Same 150ms as the wrapper, or the pieces arrive at different times.
             className={`transition-[padding] duration-150 ${
               stuck ? "pr-gutter pl-5" : ""
             }`}

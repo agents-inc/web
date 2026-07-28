@@ -3,19 +3,17 @@ import { cva, type VariantProps } from "class-variance-authority"
 
 import { cn } from "@workspace/ui/lib/utils"
 
-/**
- * Every button in the design is a square mono block. There are only four, and
- * three of them are the same filled ink — filled elements are rare enough that
- * the design calls `＋ add skill` "the page's only solid-filled element" in the
- * main column, with Install being the roster's equivalent.
- *
- * No transition: the design animates the filter bar's padding and nothing else.
- *
- *   outline — dialog footer buttons (Close, Cancel)
- *   primary — the confirming footer button (Add N skills)
- *   block   — `＋ add skill`, stretched to the filter bar's height
- *   full    — `Install`, full width in the roster footer
- */
+// Every button in the design is a square mono block. There are only four, and
+// three of them are the same filled ink — filled elements are rare enough that
+// the design calls `＋ add skill` "the page's only solid-filled element" in the
+// main column, with Install being the roster's equivalent.
+//
+// No transition: the design animates the filter bar's padding and nothing else.
+//
+// outline — dialog footer buttons (Close, Cancel)
+// primary — the confirming footer button (Add N skills)
+// block   — `＋ add skill`, stretched to the filter bar's height
+// full    — `Install`, full width in the roster footer
 const buttonVariants = cva(
   "inline-flex shrink-0 cursor-pointer items-center justify-center font-mono font-semibold whitespace-nowrap uppercase outline-none select-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
   {

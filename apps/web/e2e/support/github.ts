@@ -1,11 +1,9 @@
 import type { Page } from "@playwright/test"
 
-/**
- * The add-skill dialog is the only thing in the app that reaches the network,
- * and it talks to GitHub's public search directly. Left unmocked the specs
- * would depend on a third party that rate-limits at 10 requests a minute, so
- * every add-skill spec installs one of these.
- */
+// The add-skill dialog is the only thing in the app that reaches the network,
+// and it talks to GitHub's public search directly. Left unmocked the specs
+// would depend on a third party that rate-limits at 10 requests a minute, so
+// every add-skill spec installs one of these.
 
 const GITHUB_SEARCH = "**/api.github.com/search/repositories**"
 
@@ -16,7 +14,7 @@ export type StubRepo = {
   language: string | null
 }
 
-/** Matches `reanim`, so the highlighting assertion has something to find. */
+// Matches `reanim`, so the highlighting assertion has something to find.
 export const SEARCH_TERM = "reanim"
 
 export const SEARCH_RESULTS: StubRepo[] = [
@@ -40,7 +38,7 @@ export const SEARCH_RESULTS: StubRepo[] = [
   },
 ]
 
-/** Repo name → the name the app derives for the cell. */
+// Repo name → the name the app derives for the cell.
 export const repoSkillName = (fullName: string) =>
   fullName.split("/").pop() ?? fullName
 

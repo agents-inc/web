@@ -16,11 +16,11 @@ export type CatalogSkill = {
   domainId: Domain
   isRecommended: boolean
   recommendedReason?: string
-  /** Selecting this skill hard-excludes these. */
+  // Selecting this skill hard-excludes these.
   conflictsWith: SkillId[]
-  /** Soft conflict — warn, do not disable. */
+  // Soft conflict — warn, do not disable.
   discourages: SkillId[]
-  /** Empty means "works with anything". */
+  // Empty means "works with anything".
   compatibleWith: SkillId[]
 }
 
@@ -29,7 +29,7 @@ export type CatalogCategory = {
   displayName: string
   description: string
   domainId: Domain
-  /** Only one skill may be picked. Drives the `pick one` tag and auto-collapse. */
+  // Only one skill may be picked. Drives the `pick one` tag and auto-collapse.
   exclusive: boolean
   required: boolean
   skills: CatalogSkill[]
@@ -69,7 +69,7 @@ const toCatalogSkill = (
   compatibleWith: skill.compatibleWith as SkillId[],
 })
 
-/** Categories the UI can place: a category with no domain has nowhere to render. */
+// Categories the UI can place: a category with no domain has nowhere to render.
 const placeableCategories = (categories: Record<string, ParsedCategory>) =>
   Object.values(categories).filter(
     (category): category is ParsedCategory & { domain: Domain } =>

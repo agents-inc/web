@@ -1,11 +1,9 @@
 import { expect, test } from "../fixtures"
 import { STACKS } from "../support/catalog"
 
-/**
- * The roster stores nothing — every line is derived from `assignments`. These
- * assertions are the guard on that: if a copy is ever introduced, the summary
- * and the lists will disagree with the grid.
- */
+// The roster stores nothing — every line is derived from `assignments`. These
+// assertions are the guard on that: if a copy is ever introduced, the summary
+// and the lists will disagree with the grid.
 test.describe("roster panel", () => {
   test("starts empty", async ({ configure }) => {
     await expect(configure.roster.summary).toContainText("0 skills")
