@@ -30,14 +30,22 @@ import { useUiStore } from "@/stores/ui-store"
 
 const DEBOUNCE_MS = 350
 
-/** Wraps every case-insensitive occurrence of `term` in an amber highlight. */
+const escapeRegExp = (value: string) =>
+  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+
+// Keeps the term itself in the result, so the matches can be wrapped.
+const splitAroundTerm = (text: string, term: string) =>
+  text.split(new RegExp(`(${escapeRegExp(term)})`, "ig"))
+
+const equalsIgnoringCase = (a: string, b: string) =>
+  a.toLowerCase() === b.toLowerCase()
+
 function Highlight({ text, term }: { text: string; term: string }): ReactNode {
   const needle = term.trim()
   if (!needle) return text
 
-  const parts = text.split(new RegExp(`(${escapeRegExp(needle)})`, "ig"))
-  return parts.map((part, index) =>
-    part.toLowerCase() === needle.toLowerCase() ? (
+  return splitAroundTerm(text, needle).map((part, index) =>
+    equalsIgnoringCase(part, needle) ? (
       <span key={index} className="bg-wash text-brand-ink">
         {part}
       </span>
@@ -47,36 +55,30 @@ function Highlight({ text, term }: { text: string; term: string }): ReactNode {
   )
 }
 
-const escapeRegExp = (value: string) =>
-  value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")
+const repoName = (fullName: string) => fullName.split("/").pop() ?? fullName
 
 const toAddedSkill = (repo: SkillRepo): AddedSkill => {
-  const name = repo.fullName.split("/").pop() ?? repo.fullName
-  const { categoryId, domainId } = categoriseRepo(repo.fullName)
+  const name = repoName(repo.fullName)
+
   return {
     id: addedSkillId(repo.fullName),
     displayName: name,
     description: repo.description || "Added from GitHub",
     monogram: monogramFor(name),
     repo: repo.fullName,
-    categoryId,
-    domainId,
+    ...categoriseRepo(repo.fullName),
   }
 }
 
-const categoryLabel = (skill: AddedSkill) =>
-  skill.categoryId
-    ? `${skill.domainId} / ${CATALOG.categoriesById[skill.categoryId]?.displayName.toLowerCase() ?? skill.categoryId}`
-    : "uncategorized"
+const categoryLabel = (skill: AddedSkill) => {
+  if (!skill.categoryId) return "uncategorized"
 
-/**
- * Targeted GitHub search, one skill at a time — no browsing. Results are staged
- * into removable pills, then committed together.
- *
- * The destination category is derived from the marketplace index and is **not**
- * editable; anything unmatched reads `· uncategorized` and lands in its own
- * section. Added skills live for this session only.
- */
+  const category = CATALOG.categoriesById[skill.categoryId]
+  return `${skill.domainId} / ${category?.displayName.toLowerCase() ?? skill.categoryId}`
+}
+
+// The destination category comes from the marketplace index and is not
+// editable. Added skills live for this session only.
 export function AddSkillDialog() {
   const dialog = useUiStore((state) => state.dialog)
   const setDialog = useUiStore((state) => state.setDialog)
@@ -84,12 +86,8 @@ export function AddSkillDialog() {
 
   const [query, setQuery] = useState("")
   const [staged, setStaged] = useState<AddedSkill[]>([])
-  /**
-   * Results carry the query they answered. That single fact removes the need
-   * for a separate `loading` flag and stops a slow response for "reac"
-   * rendering under "react" — anything whose query no longer matches the input
-   * is simply not shown.
-   */
+  // Results carry the query they answered, which removes the need for a
+  // `loading` flag and stops a slow response landing under a newer query.
   const [results, setResults] = useState<{
     query: string
     repos: SkillRepo[]

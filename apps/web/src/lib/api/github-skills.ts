@@ -1,15 +1,13 @@
 import { z } from "zod"
 
-/**
- * The one network call in the app. GitHub's search endpoint is CORS-enabled
- * and works unauthenticated, so release one talks to it directly from the
- * browser; the rate limit is 10 requests/minute, which is why the dialog
- * debounces rather than searching per keystroke.
- *
- * A token cannot ship in a bundle, so raising that limit means the
- * `apps/server` proxy the spec has queued — this module is the seam it will
- * slot behind, and nothing above it needs to change.
- */
+// The one network call in the app. GitHub's search endpoint is CORS-enabled
+// and works unauthenticated, so release one talks to it directly from the
+// browser; the rate limit is 10 requests/minute, which is why the dialog
+// debounces rather than searching per keystroke.
+//
+// A token cannot ship in a bundle, so raising that limit means the
+// `apps/server` proxy the spec has queued — this module is the seam it will
+// slot behind, and nothing above it needs to change.
 
 const githubRepoSchema = z.object({
   full_name: z.string(),
@@ -17,6 +15,8 @@ const githubRepoSchema = z.object({
   stargazers_count: z.number(),
   language: z.string().nullable(),
 })
+
+type GitHubRepo = z.infer<typeof githubRepoSchema>
 
 const githubSearchSchema = z.object({
   items: z.array(githubRepoSchema),
@@ -32,11 +32,9 @@ export type SkillRepo = {
 export type SearchResult =
   { ok: true; repos: SkillRepo[] } | { ok: false; error: string }
 
-/**
- * The design labels languages `ts` / `js`, not `TypeScript` / `JavaScript` —
- * anything longer breaks the result row's single line. Unknown languages fall
- * back to their first two letters rather than being hidden.
- */
+// The design labels languages `ts` / `js`, not `TypeScript` / `JavaScript` —
+// anything longer breaks the result row's single line. Unknown languages fall
+// back to their first two letters rather than being hidden.
 const LANGUAGE_ABBREVIATIONS: Record<string, string> = {
   typescript: "ts",
   javascript: "js",
@@ -61,7 +59,7 @@ export const abbreviateLanguage = (language: string) =>
   LANGUAGE_ABBREVIATIONS[language.toLowerCase()] ??
   language.slice(0, 2).toLowerCase()
 
-/** `9100` → `9.1k`, `23000` → `23k`. */
+// `9100` → `9.1k`, `23000` → `23k`.
 export const formatStars = (stars: number) => {
   if (stars < 1000) return String(stars)
   const thousands = stars / 1000
@@ -71,6 +69,40 @@ export const formatStars = (stars: number) => {
 }
 
 const RESULT_LIMIT = 8
+const RATE_LIMITED = [403, 429]
+
+const searchUrl = (query: string) =>
+  `https://api.github.com/search/repositories?q=${encodeURIComponent(query)}` +
+  `&sort=stars&order=desc&per_page=${RESULT_LIMIT}`
+
+const toSkillRepo = (item: GitHubRepo): SkillRepo => ({
+  fullName: item.full_name,
+  description: item.description ?? "",
+  stars: item.stargazers_count,
+  language: item.language,
+})
+
+const isAbort = (error: unknown) =>
+  error instanceof DOMException && error.name === "AbortError"
+
+const toSearchResult = async (response: Response): Promise<SearchResult> => {
+  if (RATE_LIMITED.includes(response.status)) {
+    return {
+      ok: false,
+      error: "GitHub rate limit reached — try again in a minute.",
+    }
+  }
+  if (!response.ok) {
+    return { ok: false, error: `GitHub search failed (${response.status}).` }
+  }
+
+  const parsed = githubSearchSchema.safeParse(await response.json())
+  if (!parsed.success) {
+    return { ok: false, error: "GitHub returned an unexpected response." }
+  }
+
+  return { ok: true, repos: parsed.data.items.map(toSkillRepo) }
+}
 
 export const searchSkillRepos = async (
   query: string,
@@ -80,41 +112,14 @@ export const searchSkillRepos = async (
   if (!trimmed) return { ok: true, repos: [] }
 
   try {
-    const response = await fetch(
-      `https://api.github.com/search/repositories?q=${encodeURIComponent(
-        trimmed
-      )}&sort=stars&order=desc&per_page=${RESULT_LIMIT}`,
-      { signal, headers: { Accept: "application/vnd.github+json" } }
-    )
-
-    if (response.status === 403 || response.status === 429) {
-      return {
-        ok: false,
-        error: "GitHub rate limit reached — try again in a minute.",
-      }
-    }
-    if (!response.ok) {
-      return { ok: false, error: `GitHub search failed (${response.status}).` }
-    }
-
-    const parsed = githubSearchSchema.safeParse(await response.json())
-    if (!parsed.success) {
-      return { ok: false, error: "GitHub returned an unexpected response." }
-    }
-
-    return {
-      ok: true,
-      repos: parsed.data.items.map((item) => ({
-        fullName: item.full_name,
-        description: item.description ?? "",
-        stars: item.stargazers_count,
-        language: item.language,
-      })),
-    }
+    const response = await fetch(searchUrl(trimmed), {
+      signal,
+      headers: { Accept: "application/vnd.github+json" },
+    })
+    return await toSearchResult(response)
   } catch (error) {
-    if (error instanceof DOMException && error.name === "AbortError") {
-      return { ok: true, repos: [] }
-    }
+    // An abort is the caller replacing this search, not a failure.
+    if (isAbort(error)) return { ok: true, repos: [] }
     return { ok: false, error: "Could not reach GitHub." }
   }
 }

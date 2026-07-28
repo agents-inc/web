@@ -1,4 +1,9 @@
-import { SUB_AGENT_GROUPS, type Domain } from "@workspace/matrix"
+import {
+  SUB_AGENT_GROUPS,
+  type Domain,
+  type SubAgent,
+  type SubAgentGroup,
+} from "@workspace/matrix"
 import {
   MatrixGrid,
   matrixCellVariants,
@@ -12,18 +17,16 @@ import {
 import { cn } from "@workspace/ui/lib/utils"
 
 import { useConfigStore } from "@/stores/config-store"
-import type { SkillEntry } from "@/stores/persisted-schema"
+import type { LoadState, SkillEntry } from "@/stores/persisted-schema"
 
 const MODELS = ["opus", "sonnet", "haiku"] as const
 const EFFORTS = ["none", "low", "med", "high"] as const
 
-/**
- * The four canonical roles the design's matrix has columns for. Real agent ids
- * are `<domain>-<role>`, and 14 of the 23 agents fall into this grid; the other
- * nine (web-pm, web-architecture, api-pm, the meta agents…) have roles the
- * matrix has no column for and are listed beneath it instead, so nothing in
- * the catalogue is unassignable.
- */
+// The four canonical roles the design's matrix has columns for. Real agent ids
+// are `<domain>-<role>`, and 14 of the 23 agents fall into this grid; the other
+// nine (web-pm, web-architecture, api-pm, the meta agents…) have roles the
+// matrix has no column for and are listed beneath it instead, so nothing in
+// the catalogue is unassignable.
 const ROLE_COLUMNS = [
   { id: "developer", short: "dev" },
   { id: "reviewer", short: "review" },
@@ -33,38 +36,51 @@ const ROLE_COLUMNS = [
 
 const CANONICAL_ROLES = new Set<string>(ROLE_COLUMNS.map((role) => role.id))
 
+// Agent ids are `<domain>-<role>`; anything else has no role to read.
 const roleOf = (agentId: string, domainId: Domain) =>
   agentId.startsWith(`${domainId}-`) ? agentId.slice(domainId.length + 1) : null
 
-/** Domains that actually have at least one canonical-role agent. */
+const isCanonicalRole = (role: string | null): role is string =>
+  role !== null && CANONICAL_ROLES.has(role)
+
+const fitsTheGrid = (agent: SubAgent, domainId: Domain) =>
+  isCanonicalRole(roleOf(agent.id, domainId))
+
+const canonicalAgentsByRole = (group: SubAgentGroup) => {
+  const byRole = new Map<string, SubAgent>()
+
+  for (const agent of group.agents) {
+    const role = roleOf(agent.id, group.domainId)
+    if (isCanonicalRole(role)) byRole.set(role, agent)
+  }
+
+  return byRole
+}
+
+const hasAnyRole = (group: { byRole: Map<string, SubAgent> }) =>
+  group.byRole.size > 0
+
+// Domains that actually have at least one canonical-role agent.
 const matrixGroups = SUB_AGENT_GROUPS.map((group) => ({
   domainId: group.domainId,
   label: group.label,
-  byRole: new Map(
-    group.agents
-      .map((agent) => [roleOf(agent.id, group.domainId), agent] as const)
-      .filter(
-        (pair): pair is [string, (typeof group.agents)[number]] =>
-          pair[0] !== null && CANONICAL_ROLES.has(pair[0])
-      )
-  ),
-})).filter((group) => group.byRole.size > 0)
+  byRole: canonicalAgentsByRole(group),
+})).filter(hasAnyRole)
 
-/** Everything the 4-column grid cannot express. */
+// Everything the 4-column grid cannot express.
 const extraAgents = SUB_AGENT_GROUPS.flatMap((group) =>
-  group.agents.filter((agent) => {
-    const role = roleOf(agent.id, group.domainId)
-    return role === null || !CANONICAL_ROLES.has(role)
-  })
+  group.agents.filter((agent) => !fitsTheGrid(agent, group.domainId))
 )
 
-/**
- * The `•••` popover. Opens to the right of its cell, top-aligned, and flips to
- * the left for cells in the last column so it cannot escape the main column.
- *
- * Sections are separated by whitespace only — the design uses no rules inside
- * the panel.
- */
+// Reads as the word it is: nothing, `lazy`, or `pre`.
+const loadWord = (state: LoadState | null) =>
+  state === "preloaded" ? "pre" : (state ?? "")
+
+// The `•••` popover. Opens to the right of its cell, top-aligned, and flips to
+// the left for cells in the last column so it cannot escape the main column.
+//
+// Sections are separated by whitespace only — the design uses no rules inside
+// the panel.
 export function SkillOptionsPanel({
   skillId,
   entry,
@@ -180,7 +196,7 @@ export function SkillOptionsPanel({
                   )}
                 >
                   <span className="truncate">{agent.id}</span>
-                  <span>{state === "preloaded" ? "pre" : (state ?? "")}</span>
+                  <span>{loadWord(state)}</span>
                 </button>
               )
             })}
