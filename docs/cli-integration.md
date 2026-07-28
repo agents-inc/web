@@ -42,9 +42,13 @@ Done:
       runtime via `@cloudflare/vitest-pool-workers`. The KV namespace exists and its id is wired into
       `wrangler.jsonc`; to go live: set the production `WEB_ORIGIN`, then `bun run deploy`.
 
+- [x] Browser round trip for testing: the roster's Share button POSTs the payload and copies a
+      `?fromId=<id>` URL; the configure route consumes `fromId` (fetch → validate → prune → import into
+      the store → strip the param). A dead or unreadable link reports itself and leaves the config alone.
+
 Next, in order:
 
-- [ ] `/share` screen: POST on demand, show `npx agents-inc init <id>` with copy
+- [ ] `/share` screen: present the stored id as `npx agents-inc init <id>` with copy
 - [ ] Matrix sync: regenerate `packages/matrix` from a CLI-published artifact + CI drift check
 
 ## CLI changes required (not started — CLI repo deliberately untouched)
