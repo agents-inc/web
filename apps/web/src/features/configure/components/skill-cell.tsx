@@ -91,6 +91,9 @@ export function SkillCell({
       className={`px-3 py-[0.6875rem] ${open ? "z-58" : ""}`}
       role="button"
       tabIndex={incompatible ? -1 : 0}
+      // Without this the accessible name is the whole cell — name, description,
+      // both badges and the agent count run together as one string.
+      aria-label={skill.displayName}
       aria-pressed={selected}
       aria-disabled={incompatible || undefined}
       title={view.incompatibleReason}
@@ -144,6 +147,8 @@ export function SkillCell({
           render={
             <button
               type="button"
+              // "plugin, button" tells a screen reader nothing on its own.
+              aria-label={`Install mode: ${entry?.install ?? "plugin"}`}
               onClick={(event) => {
                 stop(event)
                 flip({
@@ -162,6 +167,7 @@ export function SkillCell({
           render={
             <button
               type="button"
+              aria-label={`Scope: ${entry?.scope ?? "project"}`}
               onClick={(event) => {
                 stop(event)
                 flip({

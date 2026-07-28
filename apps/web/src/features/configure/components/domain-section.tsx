@@ -32,7 +32,8 @@ export function DomainSection({
   usePinnedAttribute(headerRef)
 
   return (
-    <section>
+    // Named so the domain is a landmark rather than an anonymous <section>.
+    <section aria-label={`${view.label} skills`}>
       {first ? <div className="mt-[1.875rem]" /> : <Rule />}
 
       <div
@@ -59,7 +60,9 @@ export function DomainSection({
       </div>
 
       {view.categories.map((category) => (
-        <div key={category.id}>
+        // A named group, so the exclusivity tag beside the label describes
+        // something the accessibility tree actually delimits.
+        <div key={category.id} role="group" aria-label={category.displayName}>
           <div className="flex items-center gap-[0.5625rem] px-0.5 pt-9 pb-2">
             <span className="font-mono text-9_5 font-semibold tracking-[.12em] whitespace-nowrap text-ink uppercase">
               {category.displayName}

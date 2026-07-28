@@ -94,6 +94,8 @@ export function SkillOptionsPanel({
 
   return (
     <div
+      role="group"
+      aria-label="Skill options"
       // The panel lives inside the cell, whose click toggles selection. Without
       // this, configuring a skill would also deselect it.
       onClick={(event) => event.stopPropagation()}

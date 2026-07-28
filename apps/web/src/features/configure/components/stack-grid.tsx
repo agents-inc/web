@@ -71,7 +71,7 @@ export function StackGrid() {
   }
 
   return (
-    <Lattice columns={4}>
+    <Lattice columns={4} role="group" aria-label="Stacks">
       {stackCells.map((cell) => (
         <LatticeCell
           key={cell.id ?? "scratch"}
@@ -79,6 +79,8 @@ export function StackGrid() {
           className="px-[0.8125rem] py-[0.6875rem]"
           role="button"
           tabIndex={0}
+          // Otherwise the name swallows the member-skill line beneath it.
+          aria-label={cell.name}
           aria-pressed={cell.id === stackId}
           onClick={() => choose(cell.id)}
           onKeyDown={(event) => {
