@@ -1,0 +1,20 @@
+// The config-sharing API: stores seed payloads in KV under content-addressed
+// short ids. Local dev and tests simulate KV; only deploys touch the real
+// namespace.
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "agents-inc-api",
+  "main": "src/index.ts",
+  "compatibility_date": "2025-10-01",
+  "observability": { "enabled": true },
+  "upload_source_maps": true,
+  "kv_namespaces": [
+    { "binding": "CONFIGS", "id": "6a69c245741c40c9b6a1f3d22935b7d2" }
+  ],
+  "vars": {
+    // The one origin allowed to POST from a browser. Overridden per
+    // environment at deploy time; the CLI's GET is not a browser and needs
+    // no CORS at all.
+    "WEB_ORIGIN": "http://localhost:5173"
+  }
+}

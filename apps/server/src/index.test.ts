@@ -1,0 +1,114 @@
+import { SELF } from "cloudflare:test"
+import { describe, expect, it } from "vitest"
+
+// These run against the real worker in the real runtime with a simulated KV
+// binding, so they cover the whole contract a client sees: status codes,
+// idempotent ids, CORS, and the round trip.
+
+const BASE = "https://api.test"
+
+// The worker deliberately never checks ids against the catalog — that is the
+// CLI's warn-and-skip job — so an arbitrary skill id is a valid payload here.
+const payload = () => ({
+  v: 1,
+  matrixVersion: "1.0.0",
+  stackId: "next",
+  skills: {
+    "web-framework-react": {
+      model: "sonnet",
+      effort: "medium",
+      install: "plugin",
+      scope: "project",
+      assignments: { "web-developer": "preloaded" },
+    },
+  },
+})
+
+const post = (body: unknown) =>
+  SELF.fetch(`${BASE}/configs`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  })
+
+describe("POST /configs", () => {
+  it("stores a valid payload and returns its short id", async () => {
+    const response = await post(payload())
+
+    expect(response.status).toBe(201)
+    const { id } = await response.json<{ id: string }>()
+    expect(id).toHaveLength(8)
+  })
+
+  it("mints the same id for the same payload", async () => {
+    const first = await post(payload())
+    const second = await post(payload())
+
+    const [a, b] = await Promise.all([
+      first.json<{ id: string }>(),
+      second.json<{ id: string }>(),
+    ])
+    expect(a.id).toBe(b.id)
+  })
+
+  it("rejects a body that is not a seed payload", async () => {
+    const response = await post({ v: 1, skills: "not-a-record" })
+    expect(response.status).toBe(400)
+  })
+
+  it("refuses an oversized body before parsing it", async () => {
+    const oversized = {
+      ...payload(),
+      matrixVersion: "x".repeat(40_000),
+    }
+
+    const response = await post(oversized)
+    expect(response.status).toBe(413)
+  })
+})
+
+describe("GET /configs/:id", () => {
+  it("returns the stored payload unchanged, marked immutable", async () => {
+    const created = await post(payload())
+    const { id } = await created.json<{ id: string }>()
+
+    const response = await SELF.fetch(`${BASE}/configs/${id}`)
+
+    expect(response.status).toBe(200)
+    expect(response.headers.get("cache-control")).toContain("immutable")
+    expect(await response.json()).toEqual(payload())
+  })
+
+  it("404s an unknown id", async () => {
+    const response = await SELF.fetch(`${BASE}/configs/unknown1`)
+    expect(response.status).toBe(404)
+  })
+})
+
+describe("CORS", () => {
+  it("admits the configured web origin", async () => {
+    const response = await SELF.fetch(`${BASE}/configs`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "http://localhost:5173",
+        "access-control-request-method": "POST",
+      },
+    })
+
+    expect(response.headers.get("access-control-allow-origin")).toBe(
+      "http://localhost:5173"
+    )
+  })
+
+  it("does not admit any other origin", async () => {
+    const response = await SELF.fetch(`${BASE}/configs`, {
+      method: "OPTIONS",
+      headers: {
+        origin: "https://evil.example",
+        "access-control-request-method": "POST",
+      },
+    })
+
+    expect(response.headers.get("access-control-allow-origin")).toBeNull()
+  })
+})
