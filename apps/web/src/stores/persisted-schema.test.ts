@@ -6,23 +6,21 @@ import {
   PERSIST_VERSION,
   isWorthRemembering,
   migrateConfig,
-  persistedConfigSchema,
   pruneUnknownIds,
   type PersistedConfig,
   type SkillEntry,
 } from "./persisted-schema"
 
 // localStorage is the one genuinely untrusted input the app has, and this
-// module is the boundary that reads it. It is also the only place where a bug
-// is *silent*: a broken migration does not throw, it quietly hands back a
-// configuration missing the work someone spent an afternoon on.
+// module is the boundary that reads it. A bug here is *silent*: nothing
+// throws, the app quietly hands back a configuration missing the work someone
+// spent an afternoon on.
 //
-// Reaching these paths through the browser means hand-seeding storage with a
-// legacy blob and reloading, which is slow and awkward for one case and
-// impractical for a dozen — so they are covered here instead.
+// Reaching these paths through the browser means hand-seeding storage and
+// reloading, which is slow and awkward for one case and impractical for a
+// dozen — so they are covered here instead.
 
 const KNOWN_SKILL = Object.keys(CATALOG.skillsById)[0]!
-const OTHER_SKILL = Object.keys(CATALOG.skillsById)[1]!
 const KNOWN_AGENT = Object.keys(SUB_AGENTS_BY_ID)[0]!
 const KNOWN_STACK = STACKS[0]!.id
 const GONE_SKILL = "removed-in-a-later-release"
@@ -128,87 +126,15 @@ describe("pruneUnknownIds", () => {
   })
 })
 
+// Pre-release policy: no migrations — an old version is discarded, not upgraded.
 describe("migrateConfig", () => {
-  const v1 = {
-    stackId: KNOWN_STACK,
-    targetAgentIds: [KNOWN_AGENT],
-    skills: {
-      [KNOWN_SKILL]: {
-        selected: true,
-        agents: [KNOWN_AGENT],
-        preloaded: true,
-        install: "eject" as const,
-        scope: "global" as const,
-      },
-      [OTHER_SKILL]: {
-        selected: false,
-        agents: [],
-        preloaded: false,
-        install: "plugin" as const,
-        scope: "project" as const,
-      },
-    },
-  }
-
-  it("produces something the current schema accepts", () => {
-    const migrated = migrateConfig(structuredClone(v1), 1)
-    expect(persistedConfigSchema.safeParse(migrated).success).toBe(true)
-  })
-
-  it("folds agents and the skill-wide preloaded flag into load states", () => {
-    const migrated = persistedConfigSchema.parse(
-      migrateConfig(structuredClone(v1), 1)
-    )
-
-    expect(migrated.skills[KNOWN_SKILL]!.assignments).toEqual({
-      [KNOWN_AGENT]: "preloaded",
-    })
-  })
-
-  it("carries install mode and scope across untouched", () => {
-    const migrated = persistedConfigSchema.parse(
-      migrateConfig(structuredClone(v1), 1)
-    )
-
-    expect(migrated.skills[KNOWN_SKILL]).toMatchObject({
-      install: "eject",
-      scope: "global",
-    })
-  })
-
-  // v2 made presence in the map mean selection, so a `selected: false` entry has no home.
-  it("drops v1 entries that were explicitly deselected", () => {
-    const migrated = persistedConfigSchema.parse(
-      migrateConfig(structuredClone(v1), 1)
-    )
-
-    expect(Object.keys(migrated.skills)).toEqual([KNOWN_SKILL])
-  })
-
-  it("gives a v1 config the v3 remembered map", () => {
-    const migrated = persistedConfigSchema.parse(
-      migrateConfig(structuredClone(v1), 1)
-    )
-
-    expect(migrated.remembered).toEqual({})
-  })
-
-  it("adds the remembered map to a v2 config without touching its skills", () => {
-    const v2 = { stackId: null, skills: { [KNOWN_SKILL]: entry() } }
-
-    const migrated = persistedConfigSchema.parse(migrateConfig(v2, 2))
-
-    expect(migrated.remembered).toEqual({})
-    expect(migrated.skills).toEqual(v2.skills)
-  })
-
   it("passes the current version through unchanged", () => {
     const current = config({ skills: { [KNOWN_SKILL]: entry() } })
     expect(migrateConfig(current, PERSIST_VERSION)).toEqual(current)
   })
 
   it.each([
-    ["an unreadable v1 blob", { total: "nonsense" }, 1],
+    ["an older version", { stackId: null, skills: {} }, PERSIST_VERSION - 1],
     ["an unknown future version", { stackId: null, skills: {} }, 99],
   ])("discards %s rather than guessing", (_label, state, version) => {
     expect(migrateConfig(state, version)).toBeUndefined()

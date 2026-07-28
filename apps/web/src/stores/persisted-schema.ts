@@ -1,15 +1,15 @@
 import { CATALOG, STACKS, SUB_AGENTS_BY_ID } from "@workspace/matrix"
 import { z } from "zod"
 
-// Bump when the persisted shape changes, and add a case to `migrateConfig`.
-export const PERSIST_VERSION = 3
+// Bump when the persisted shape changes; older blobs are discarded on load.
+export const PERSIST_VERSION = 4
 
 // Not assigned is the absence of a key, so only the two live states appear.
 export const loadStateSchema = z.enum(["lazy", "preloaded"])
 
 export const skillEntrySchema = z.object({
-  model: z.enum(["opus", "sonnet", "haiku"]),
-  effort: z.enum(["none", "low", "med", "high"]),
+  model: z.enum(["opus", "fable", "sonnet", "haiku"]),
+  effort: z.enum(["low", "medium", "high", "xhigh", "max", "ultra"]),
   install: z.enum(["plugin", "eject"]),
   scope: z.enum(["project", "global"]),
   // Sub-agent id → how that agent loads the skill. The single source of truth
@@ -33,10 +33,10 @@ export type PersistedConfig = z.infer<typeof persistedConfigSchema>
 export type SkillOptions = Omit<SkillEntry, "assignments">
 
 // Shared so `isStackCustom` compares against what `applyStack` writes.
-// `sonnet` / `med` are the resting values of the two segments with no "off".
+// `sonnet` / `medium` are the resting values of the two segments with no "off".
 export const DEFAULT_SKILL_OPTIONS = {
   model: "sonnet",
-  effort: "med",
+  effort: "medium",
   install: "plugin",
   scope: "project",
 } as const satisfies SkillOptions
@@ -90,69 +90,8 @@ export const pruneUnknownIds = (config: PersistedConfig): PersistedConfig => ({
   remembered: pruneSkillMap(config.remembered),
 })
 
-// The v1 shape, kept only so the v1 → v2 migration can read it.
-const persistedConfigV1Schema = z.object({
-  stackId: z.string().nullable(),
-  targetAgentIds: z.array(z.string()).optional(),
-  skills: z.record(
-    z.string(),
-    z.object({
-      selected: z.boolean(),
-      agents: z.array(z.string()),
-      preloaded: z.boolean(),
-      install: z.enum(["plugin", "eject"]),
-      scope: z.enum(["global", "project"]),
-    })
-  ),
-})
-
-// Folds `agents[]` + a skill-wide `preloaded` into per-agent load states. A
-// deselected v1 entry is dropped, since in v2 presence is what selection means.
-type V1Entry = z.infer<typeof persistedConfigV1Schema>["skills"][string]
-
-const wasSelected = ([, entry]: [string, V1Entry]) => entry.selected
-
-// v1 recorded one flag for the whole skill; v2 records one state per agent.
-const toV2Assignments = (entry: V1Entry): SkillEntry["assignments"] => {
-  const load: LoadState = entry.preloaded ? "preloaded" : "lazy"
-  return Object.fromEntries(entry.agents.map((agentId) => [agentId, load]))
-}
-
-const toV2Entry = (entry: V1Entry): SkillEntry => ({
-  ...DEFAULT_SKILL_OPTIONS,
-  install: entry.install,
-  scope: entry.scope,
-  assignments: toV2Assignments(entry),
-})
-
-const migrateV1ToV2 = (state: unknown): unknown => {
-  const parsed = persistedConfigV1Schema.safeParse(state)
-  if (!parsed.success) return undefined
-
-  return {
-    stackId: parsed.data.stackId,
-    skills: Object.fromEntries(
-      Object.entries(parsed.data.skills)
-        .filter(wasSelected)
-        .map(([skillId, entry]) => [skillId, toV2Entry(entry)])
-    ),
-  }
-}
-
-// v2 had nowhere to keep a deselected skill's configuration, so it starts empty.
-const migrateV2ToV3 = (state: unknown): unknown =>
-  state && typeof state === "object" ? { ...state, remembered: {} } : undefined
-
-// `undefined` discards the stored state, which `merge` replaces with defaults.
-export const migrateConfig = (state: unknown, fromVersion: number): unknown => {
-  switch (fromVersion) {
-    case 1:
-      return migrateV2ToV3(migrateV1ToV2(state))
-    case 2:
-      return migrateV2ToV3(state)
-    case PERSIST_VERSION:
-      return state
-    default:
-      return undefined
-  }
-}
+// Pre-release policy: no migrations. Anything but the current version is
+// discarded (`undefined`), which `merge` replaces with defaults. When the app
+// has real users, migrations start here — the version seam already exists.
+export const migrateConfig = (state: unknown, fromVersion: number): unknown =>
+  fromVersion === PERSIST_VERSION ? state : undefined

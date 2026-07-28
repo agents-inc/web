@@ -38,8 +38,8 @@ export const MULTI_CATEGORY = {
 export const STACK_MEMBER_SKILL = "React"
 
 export const SKILL_OPTIONS = {
-  models: ["opus", "sonnet", "haiku"],
-  efforts: ["none", "low", "med", "high"],
+  models: ["opus", "fable", "sonnet", "haiku"],
+  efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
   defaultModel: "sonnet",
-  defaultEffort: "med",
+  defaultEffort: "medium",
 } as const

@@ -19,8 +19,8 @@ import { cn } from "@workspace/ui/lib/utils"
 import { useConfigStore } from "@/stores/config-store"
 import type { LoadState, SkillEntry } from "@/stores/persisted-schema"
 
-const MODELS = ["opus", "sonnet", "haiku"] as const
-const EFFORTS = ["none", "low", "med", "high"] as const
+const MODELS = ["opus", "fable", "sonnet", "haiku"] as const
+const EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const
 
 // The four canonical roles the design's matrix has columns for. Real agent ids
 // are `<domain>-<role>`, and 14 of the 23 agents fall into this grid; the other
