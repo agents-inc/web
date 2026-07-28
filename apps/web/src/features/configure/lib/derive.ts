@@ -1,9 +1,5 @@
-// Everything the Configure screen shows that is not stored: filtered cells, disabled states, the
-// stack-is-custom flag, the roster, the install inventory. All pure — (catalog, config, search) in,
-// view data out — so the screen can never drift from the store by caching a stale copy of any of it.
-//
-// The design is emphatic that `assignments` is the single source of truth: per-cell agent counts,
-// the roster lists and the install inventory are all derived here and none of them is stored.
+// Everything the screen shows that is not stored. All pure — (catalog, config,
+// search) in, view data out — so nothing here can cache a stale copy.
 
 import {
   CATALOG,
@@ -24,28 +20,18 @@ import {
   type SkillEntry,
 } from "@/stores/persisted-schema"
 
-/**
- * What the screen derives from: the selection, and nothing else.
- *
- * Deliberately narrower than `PersistedConfig`. The store also holds
- * `remembered`, the configuration of skills that are *not* selected, and no
- * derivation may see it — a remembered skill must not appear in a grid, a
- * roster line, a count or the install inventory. Excluding it at the type
- * level means that cannot happen by accident.
- */
+// The selection and nothing else. Narrower than `PersistedConfig` on purpose:
+// a remembered skill is not selected, so no derivation may see one.
 export type ConfigSelection = Pick<PersistedConfig, "stackId" | "skills">
 
-/**
- * A skill as the grid renders it. Catalog skills and session-added skills are
- * flattened to the same shape here so the cell component never branches on
- * provenance — only the `added` flag, which draws the tag.
- */
+// Catalog and session-added skills flattened to one shape, so the cell never
+// branches on provenance — only on `added`, which draws the tag.
 export type GridSkill = {
   id: string
   displayName: string
   description: string
   monogram: string
-  /** Catalog skills carry a slug for the logo lookup; added ones do not. */
+  // Catalog skills carry a slug for the logo lookup; added ones do not.
   slug?: string
   added: boolean
 }
@@ -54,7 +40,7 @@ export type SkillCellView = {
   skill: GridSkill
   entry: SkillEntry | undefined
   selected: boolean
-  /** Conflicts with something already selected — rendered disabled, never hidden. */
+  // Conflicts with something already selected — rendered disabled, never hidden.
   incompatible: boolean
   incompatibleReason?: string
   agentCount: number
@@ -73,7 +59,7 @@ export type DomainView = {
   categories: CategoryView[]
 }
 
-/** Two letters: first letter of each of the first two words, else the first two. */
+// Two letters: first letter of each of the first two words, else the first two.
 export const monogramOf = (displayName: string) => {
   const words = displayName.split(/[\s.+&_-]+/).filter(Boolean)
   return (
@@ -110,17 +96,16 @@ const matchesQuery = (skill: GridSkill, query: string) => {
   )
 }
 
-/**
- * A skill is incompatible when something already selected excludes it.
- * Conflicts are stored per-skill on both sides by the CLI's resolver, so
- * checking one direction is enough.
- *
- * Siblings in an exclusive category are the exception. Every framework
- * conflicts with every other framework, so a naive check disables all of them
- * the moment you pick React — and since disabled cells are not clickable there
- * would be no way to change your mind. In an exclusive category the
- * alternatives stay live and clicking one swaps.
- */
+const isRecommended = (skillId: string) =>
+  CATALOG.skillsById[skillId]?.isRecommended ?? false
+
+// Every framework conflicts with every other, so counting a sibling would
+// disable them all the moment you pick one, with no way back.
+const isExclusiveSibling = (conflictId: string, category: CatalogCategory) =>
+  category.exclusive &&
+  CATALOG.skillsById[conflictId]?.categoryId === category.id
+
+// Conflicts are stored on both sides, so one direction is enough.
 const findConflict = (
   skill: CatalogSkill,
   category: CatalogCategory,
@@ -128,11 +113,7 @@ const findConflict = (
 ) =>
   skill.conflictsWith.find(
     (conflictId) =>
-      selectedIds.has(conflictId) &&
-      !(
-        category.exclusive &&
-        CATALOG.skillsById[conflictId]?.categoryId === category.id
-      )
+      selectedIds.has(conflictId) && !isExclusiveSibling(conflictId, category)
   )
 
 const toCell = (
@@ -152,119 +133,145 @@ const toCell = (
 
 export const UNCATEGORIZED_ID = "uncategorized"
 
-/**
- * Domain sections with their categories and cells, filtered by the search
- * params. Categories that filter down to nothing are dropped; domains that
- * lose all their categories are dropped too, so the page never renders an
- * empty header.
- *
- * Session-added skills join the category the marketplace index matched them
- * to. Unmatched ones collect in a synthetic `Uncategorized` group appended to
- * a trailing "Added" section — the design names the bucket but never mocks it,
- * and giving it its own section keeps it from implying membership of a real
- * domain.
- */
+// ── Grid ─────────────────────────────────────────────────────────────────
+
+// Everything the grid derivation needs, gathered once rather than threaded.
+type GridContext = {
+  config: ConfigSelection
+  search: ConfigureSearch
+  selectedIds: Set<string>
+  addedByCategory: Map<string, AddedSkill[]>
+}
+
+const groupAddedByCategory = (added: AddedSkill[]) => {
+  const byCategory = new Map<string, AddedSkill[]>()
+
+  for (const skill of added) {
+    const key = skill.categoryId ?? UNCATEGORIZED_ID
+    const bucket = byCategory.get(key)
+    if (bucket) bucket.push(skill)
+    else byCategory.set(key, [skill])
+  }
+
+  return byCategory
+}
+
+const isVisibleDomain = (domain: CatalogDomain, search: ConfigureSearch) =>
+  !search.domain || domain.id === search.domain
+
+// Applied to the cell, not the skill, so "selected" has one definition.
+const survivesSelectionFilter = (
+  cell: SkillCellView,
+  search: ConfigureSearch
+) => !search.sel || cell.selected
+
+const toCatalogCell = (
+  skill: GridSkill,
+  category: CatalogCategory,
+  { config, selectedIds }: GridContext
+): SkillCellView => {
+  const entry = config.skills[skill.id]
+  const source = CATALOG.skillsById[skill.id]
+
+  if (entry || !source) return toCell(skill, entry)
+  return toCell(skill, entry, findConflict(source, category, selectedIds))
+}
+
+const catalogCellsIn = (
+  category: CatalogCategory,
+  context: GridContext
+): SkillCellView[] => {
+  const { search } = context
+
+  return category.skills
+    .map(toGridSkill)
+    .filter((skill) => matchesQuery(skill, search.q))
+    .filter((skill) => !search.rec || isRecommended(skill.id))
+    .map((skill) => toCatalogCell(skill, category, context))
+    .filter((cell) => survivesSelectionFilter(cell, search))
+}
+
+// `recommended` is a catalog flag, so an added skill can never satisfy it.
+const addedCellsIn = (
+  categoryId: string,
+  context: GridContext
+): SkillCellView[] => {
+  const { config, search, addedByCategory } = context
+  if (search.rec) return []
+
+  return (addedByCategory.get(categoryId) ?? [])
+    .map(addedToGridSkill)
+    .filter((skill) => matchesQuery(skill, search.q))
+    .map((skill) => toCell(skill, config.skills[skill.id]))
+    .filter((cell) => survivesSelectionFilter(cell, search))
+}
+
+const toCategoryView = (
+  category: CatalogCategory,
+  context: GridContext
+): CategoryView => ({
+  id: category.id,
+  displayName: category.displayName,
+  exclusive: category.exclusive,
+  cells: [
+    ...catalogCellsIn(category, context),
+    ...addedCellsIn(category.id, context),
+  ],
+})
+
+const hasCells = (category: CategoryView) => category.cells.length > 0
+const hasCategories = (domain: DomainView) => domain.categories.length > 0
+
+const toDomainView = (
+  domain: CatalogDomain,
+  context: GridContext
+): DomainView => ({
+  id: domain.id,
+  label: domain.label,
+  categories: domain.categories
+    .map((category) => toCategoryView(category, context))
+    .filter(hasCells),
+})
+
+// Its own section, so an unmatched skill does not imply a real domain.
+const toAddedSection = (cells: SkillCellView[]): DomainView => ({
+  id: "added",
+  label: "Added",
+  categories: [
+    {
+      id: UNCATEGORIZED_ID,
+      displayName: "Uncategorized",
+      exclusive: false,
+      cells,
+    },
+  ],
+})
+
+// Categories that filter down to nothing are dropped, and so are the domains
+// that lose all of theirs, so the page never renders an empty header.
 export const selectDomainViews = (
   config: ConfigSelection,
   added: AddedSkill[],
   search: ConfigureSearch
 ): DomainView[] => {
-  const selectedIds = new Set(Object.keys(config.skills))
-
-  /**
-   * The `selected` chip. Applied after `toCell` rather than before it because
-   * selection is a property of the *cell* — presence in `config.skills` — and
-   * doing it here keeps one definition of "selected" instead of a second
-   * lookup that could disagree with the one the cell renders from.
-   */
-  const isSelectedIfNarrowed = (cell: SkillCellView) =>
-    !search.sel || cell.selected
-
-  const addedByCategory = new Map<string, AddedSkill[]>()
-  for (const skill of added) {
-    const key = skill.categoryId ?? UNCATEGORIZED_ID
-    const bucket = addedByCategory.get(key)
-    if (bucket) bucket.push(skill)
-    else addedByCategory.set(key, [skill])
+  const context: GridContext = {
+    config,
+    search,
+    selectedIds: new Set(Object.keys(config.skills)),
+    addedByCategory: groupAddedByCategory(added),
   }
 
   const domains = CATALOG.domains
-    .filter((domain) => !search.domain || domain.id === search.domain)
-    .map((domain: CatalogDomain): DomainView => {
-      const categories = domain.categories
-        .map((category): CategoryView => {
-          const catalogCells = category.skills
-            .map(toGridSkill)
-            .filter((skill) => matchesQuery(skill, search.q))
-            .filter(
-              (skill) =>
-                !search.rec ||
-                (CATALOG.skillsById[skill.id]?.isRecommended ?? false)
-            )
-            .map((skill) => {
-              const entry = config.skills[skill.id]
-              const source = CATALOG.skillsById[skill.id]
-              return toCell(
-                skill,
-                entry,
-                entry || !source
-                  ? undefined
-                  : findConflict(source, category, selectedIds)
-              )
-            })
-            .filter(isSelectedIfNarrowed)
+    .filter((domain) => isVisibleDomain(domain, search))
+    .map((domain) => toDomainView(domain, context))
+    .filter(hasCategories)
 
-          // Added skills are never "recommended" — the flag is a catalog
-          // concept — but they can certainly be selected.
-          const addedCells = search.rec
-            ? []
-            : (addedByCategory.get(category.id) ?? [])
-                .map(addedToGridSkill)
-                .filter((skill) => matchesQuery(skill, search.q))
-                .map((skill) => toCell(skill, config.skills[skill.id]))
-                .filter(isSelectedIfNarrowed)
-
-          return {
-            id: category.id,
-            displayName: category.displayName,
-            exclusive: category.exclusive,
-            cells: [...catalogCells, ...addedCells],
-          }
-        })
-        .filter((category) => category.cells.length > 0)
-
-      return { id: domain.id, label: domain.label, categories }
-    })
-    .filter((domain) => domain.categories.length > 0)
-
-  const orphans = search.rec
-    ? []
-    : (addedByCategory.get(UNCATEGORIZED_ID) ?? [])
-        .map(addedToGridSkill)
-        .filter((skill) => matchesQuery(skill, search.q))
-        .map((skill) => toCell(skill, config.skills[skill.id]))
-        .filter(isSelectedIfNarrowed)
-
+  const orphans = addedCellsIn(UNCATEGORIZED_ID, context)
   if (orphans.length === 0 || search.domain) return domains
 
-  return [
-    ...domains,
-    {
-      id: "added",
-      label: "Added",
-      categories: [
-        {
-          id: UNCATEGORIZED_ID,
-          displayName: "Uncategorized",
-          exclusive: false,
-          cells: orphans,
-        },
-      ],
-    },
-  ]
+  return [...domains, toAddedSection(orphans)]
 }
-
-/* ── Roster ─────────────────────────────────────────────────────────────── */
+// ── Roster ───────────────────────────────────────────────────────────────
 
 export type RosterSkill = {
   id: string
@@ -282,28 +289,30 @@ const displayNameOf = (skillId: string, added: AddedSkill[]) =>
   added.find((skill) => skill.id === skillId)?.displayName ??
   skillId
 
-/** Every sub-agent that exists, with how many skills it holds. */
-export const selectAvailableAgents = (config: ConfigSelection) => {
+// In the catalogue's own order, so lists never reshuffle as skills are toggled.
+const allAgents = () => SUB_AGENT_GROUPS.flatMap((group) => group.agents)
+
+const byDisplayName = (
+  a: { displayName: string },
+  b: { displayName: string }
+) => a.displayName.localeCompare(b.displayName)
+
+const allAssignments = (config: ConfigSelection) =>
+  Object.values(config.skills).flatMap((entry) =>
+    Object.entries(entry.assignments)
+  )
+
+const countSkillsByAgent = (config: ConfigSelection) => {
   const counts: Record<string, number> = {}
-  for (const entry of Object.values(config.skills)) {
-    for (const agentId of Object.keys(entry.assignments)) {
-      counts[agentId] = (counts[agentId] ?? 0) + 1
-    }
+
+  for (const [agentId] of allAssignments(config)) {
+    counts[agentId] = (counts[agentId] ?? 0) + 1
   }
 
-  return SUB_AGENT_GROUPS.flatMap((group) =>
-    group.agents.map((agent) => ({
-      agent,
-      count: counts[agent.id] ?? 0,
-    }))
-  )
+  return counts
 }
 
-/** Only the sub-agents that actually hold skills, with their skill lists. */
-export const selectAgentsInUse = (
-  config: ConfigSelection,
-  added: AddedSkill[]
-): RosterAgent[] => {
+const groupSkillsByAgent = (config: ConfigSelection, added: AddedSkill[]) => {
   const byAgent = new Map<string, RosterSkill[]>()
 
   for (const [skillId, entry] of Object.entries(config.skills)) {
@@ -318,17 +327,35 @@ export const selectAgentsInUse = (
     }
   }
 
-  return SUB_AGENT_GROUPS.flatMap((group) => group.agents)
+  return byAgent
+}
+
+// Every sub-agent that exists, with how many skills it holds.
+export const selectAvailableAgents = (config: ConfigSelection) => {
+  const counts = countSkillsByAgent(config)
+
+  return allAgents().map((agent) => ({
+    agent,
+    count: counts[agent.id] ?? 0,
+  }))
+}
+
+// Only the sub-agents that actually hold skills, with their skill lists.
+export const selectAgentsInUse = (
+  config: ConfigSelection,
+  added: AddedSkill[]
+): RosterAgent[] => {
+  const byAgent = groupSkillsByAgent(config, added)
+
+  return allAgents()
     .filter((agent) => byAgent.has(agent.id))
     .map((agent) => ({
       agent,
-      skills: (byAgent.get(agent.id) ?? []).sort((a, b) =>
-        a.displayName.localeCompare(b.displayName)
-      ),
+      skills: [...(byAgent.get(agent.id) ?? [])].sort(byDisplayName),
     }))
 }
 
-/* ── Summaries ──────────────────────────────────────────────────────────── */
+// ── Summaries ────────────────────────────────────────────────────────────
 
 export type ConfigSummary = {
   skillCount: number
@@ -338,23 +365,24 @@ export type ConfigSummary = {
   ejectedCount: number
 }
 
+const isPreloaded = ([, load]: [string, LoadState]) => load === "preloaded"
+const isEjected = (entry: SkillEntry) => entry.install === "eject"
+
 export const summarize = (config: ConfigSelection): ConfigSummary => {
   const entries = Object.values(config.skills)
-  const assignments = entries.flatMap((entry) =>
-    Object.entries(entry.assignments)
-  )
+  const assignments = allAssignments(config)
+  const agentIds = new Set(assignments.map(([agentId]) => agentId))
 
   return {
     skillCount: entries.length,
-    agentCount: new Set(assignments.map(([agentId]) => agentId)).size,
+    agentCount: agentIds.size,
     assignmentCount: assignments.length,
-    preloadedCount: assignments.filter(([, load]) => load === "preloaded")
-      .length,
-    ejectedCount: entries.filter((entry) => entry.install === "eject").length,
+    preloadedCount: assignments.filter(isPreloaded).length,
+    ejectedCount: entries.filter(isEjected).length,
   }
 }
 
-/* ── Install inventory ──────────────────────────────────────────────────── */
+// ── Install inventory ────────────────────────────────────────────────────
 
 export type InventorySkill = {
   id: string
@@ -368,84 +396,98 @@ export type InstallInventory = {
   agents: SubAgent[]
 }
 
-export const selectInstallInventory = (
+type ScopedInventorySkill = InventorySkill & { scope: "project" | "global" }
+
+const assignedAgentIds = (config: ConfigSelection) =>
+  new Set(allAssignments(config).map(([agentId]) => agentId))
+
+const toInventorySkills = (
   config: ConfigSelection,
   added: AddedSkill[]
-): InstallInventory => {
-  const skills = Object.entries(config.skills)
+): ScopedInventorySkill[] =>
+  Object.entries(config.skills)
     .map(([id, entry]) => ({
       id,
       displayName: displayNameOf(id, added),
       install: entry.install,
       scope: entry.scope,
     }))
-    .sort((a, b) => a.displayName.localeCompare(b.displayName))
+    .sort(byDisplayName)
 
-  const assignedAgentIds = new Set(
-    Object.values(config.skills).flatMap((entry) =>
-      Object.keys(entry.assignments)
-    )
-  )
+const inScope =
+  (scope: ScopedInventorySkill["scope"]) => (skill: ScopedInventorySkill) =>
+    skill.scope === scope
+
+export const selectInstallInventory = (
+  config: ConfigSelection,
+  added: AddedSkill[]
+): InstallInventory => {
+  const skills = toInventorySkills(config, added)
+  const assigned = assignedAgentIds(config)
 
   return {
-    project: skills.filter((skill) => skill.scope === "project"),
-    global: skills.filter((skill) => skill.scope === "global"),
-    /**
-     * Ordered by the catalogue's own grouping rather than by whichever skill
-     * happened to reference an agent first — a Set preserves insertion order,
-     * which would make the inventory reshuffle as skills are toggled.
-     */
-    agents: SUB_AGENT_GROUPS.flatMap((group) => group.agents).filter(
-      (agent: SubAgent) => assignedAgentIds.has(agent.id)
-    ),
+    project: skills.filter(inScope("project")),
+    global: skills.filter(inScope("global")),
+    agents: allAgents().filter((agent) => assigned.has(agent.id)),
   }
 }
 
-/* ── Stack ──────────────────────────────────────────────────────────────── */
+// ── Stack ────────────────────────────────────────────────────────────────
 
-const sameSet = (a: readonly string[], b: readonly string[]) =>
-  a.length === b.length && new Set(a).size === new Set([...a, ...b]).size
+const sameSet = (a: readonly string[], b: readonly string[]) => {
+  if (a.length !== b.length) return false
+  const inB = new Set(b)
+  return a.every((value) => inB.has(value))
+}
 
 const sameAssignments = (
   assignments: Record<string, LoadState>,
   agents: readonly string[],
   preloaded: boolean
 ) => {
-  const ids = Object.keys(assignments)
-  if (!sameSet(ids, agents)) return false
+  const assignedIds = Object.keys(assignments)
+  if (!sameSet(assignedIds, agents)) return false
+
   const expected: LoadState = preloaded ? "preloaded" : "lazy"
-  return ids.every((agentId) => assignments[agentId] === expected)
+  return assignedIds.every((agentId) => assignments[agentId] === expected)
 }
 
-/**
- * True once the configuration no longer matches what the stack would produce —
- * the design's "Custom" label, where *any* edit counts, not just adding or
- * removing a skill. Flipping one skill from Plugin to Eject is an edit, so
- * options and assignments are compared too.
- */
+const hasDefaultOptions = (entry: SkillEntry) =>
+  entry.install === DEFAULT_SKILL_OPTIONS.install &&
+  entry.scope === DEFAULT_SKILL_OPTIONS.scope &&
+  entry.model === DEFAULT_SKILL_OPTIONS.model &&
+  entry.effort === DEFAULT_SKILL_OPTIONS.effort
+
+// Any difference from what the stack would have produced counts as an edit.
+const isSkillEdited = (
+  entry: SkillEntry,
+  expectedAgents: readonly string[],
+  preloaded: boolean
+) =>
+  !hasDefaultOptions(entry) ||
+  !sameAssignments(entry.assignments, expectedAgents, preloaded)
+
+// The design's "Custom" label, where any edit counts — so options and
+// assignments are compared, not just which skills are selected.
 export const isStackCustom = (config: ConfigSelection): boolean => {
   if (config.stackId === null) return Object.keys(config.skills).length > 0
 
   const expansion = expandStack(config.stackId)
   if (!expansion) return true
 
-  const current = Object.keys(config.skills)
-  if (!sameSet(current, expansion.skillIds)) return true
+  const selectedIds = Object.keys(config.skills)
+  if (!sameSet(selectedIds, expansion.skillIds)) return true
 
   const preloaded = new Set<string>(expansion.preloadedSkillIds)
-  return current.some((skillId) => {
+
+  return selectedIds.some((skillId) => {
     const entry = config.skills[skillId]
     if (!entry) return true
-    return (
-      entry.install !== DEFAULT_SKILL_OPTIONS.install ||
-      entry.scope !== DEFAULT_SKILL_OPTIONS.scope ||
-      entry.model !== DEFAULT_SKILL_OPTIONS.model ||
-      entry.effort !== DEFAULT_SKILL_OPTIONS.effort ||
-      !sameAssignments(
-        entry.assignments,
-        expansion.agentsBySkill[skillId] ?? [],
-        preloaded.has(skillId)
-      )
+
+    return isSkillEdited(
+      entry,
+      expansion.agentsBySkill[skillId] ?? [],
+      preloaded.has(skillId)
     )
   })
 }
