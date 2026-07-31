@@ -30,7 +30,9 @@ test.describe("skill state badges", () => {
     await expect(skill.scopeBadge).toHaveAccessibleName("Scope: global")
   })
 
-  test("flipping a badge on an unselected skill selects it first", async ({
+  // A badge configures a skill; it is not a way of choosing one. The value it
+  // sets is kept, so picking the skill later arrives with it already applied.
+  test("flipping a badge on an unselected skill does not select it", async ({
     configure,
   }) => {
     const skill = configure.skillIn(web, CATEGORY, SKILL)
@@ -38,7 +40,10 @@ test.describe("skill state badges", () => {
     await expect(skill.root).toHaveAttribute("aria-pressed", "false")
     await skill.flipInstall()
 
-    await expect(skill.root).toHaveAttribute("aria-pressed", "true")
+    await expect(skill.root).toHaveAttribute("aria-pressed", "false")
+    await expect(skill.installBadge).toHaveAccessibleName("Install mode: eject")
+
+    await skill.toggle()
     await expect(skill.installBadge).toHaveAccessibleName("Install mode: eject")
   })
 

@@ -1,12 +1,22 @@
 import { Badge } from "@workspace/ui/components/badge"
 import { LatticeCell } from "@workspace/ui/components/lattice"
-import { useEffect, useRef } from "react"
+import { useEffect, useMemo, useRef } from "react"
 
 import { SkillIcon } from "@/components/skill-icon"
 import type { SkillCellView } from "@/features/configure/lib/derive"
-import { useConfigStore } from "@/stores/config-store"
+import { freshEntry, useConfigStore } from "@/stores/config-store"
 import { useUiStore } from "@/stores/ui-store"
 import { SkillOptionsPanel } from "./skill-options-panel"
+
+// The three squares of the ••• control, top to bottom. Named rather than
+// indexed so the keys mean something.
+const DOTS = ["top", "middle", "bottom"] as const
+
+// "0 agents" reads as a failure on a skill that was just picked.
+const agentSummary = (count: number) => {
+  if (count === 0) return "no agents"
+  return count === 1 ? "1 agent" : `${count} agents`
+}
 
 // The whole cell toggles selection, so every control inside stops propagation
 // — otherwise flipping Install to Eject would also deselect the skill.
@@ -29,24 +39,34 @@ export function SkillCell({
   const open = openPanelSkillId === skill.id
   const cellRef = useRef<HTMLDivElement>(null)
 
+  // What the badges and the panel show. A selected skill's own entry, else
+  // whatever was configured before it was picked, else what picking it would
+  // create — the same three fallbacks the store applies when it writes, so the
+  // panel never shows one thing and saves another. Read here rather than in
+  // `derive`, which deliberately cannot see `remembered`.
+  const remembered = useConfigStore((state) => state.remembered[skill.id])
+  const untouched = useMemo(() => freshEntry(skill.id), [skill.id])
+  const options = entry ?? remembered ?? untouched
+
   const stop = (event: { stopPropagation: () => void }) =>
     event.stopPropagation()
 
-  // Options only apply once selected, so opening selects first. Otherwise the
-  // ••• is a dead click on every unselected cell.
-  const requestPanel = () => {
-    if (!selected) {
-      toggleSkill(skill.id)
-      openPanel(skill.id)
-      return
-    }
-    togglePanel(skill.id)
+  // Nothing inside an incompatible cell may select it — the whole cell, the
+  // •••, and both badges all funnel into `toggleSkill`, so each entry point
+  // has to check. The cell stays hoverable so its reason can be read.
+  const select = () => {
+    if (!incompatible) toggleSkill(skill.id)
   }
 
-  // Same reasoning as `requestPanel` — a badge must never be a dead click.
+  // The ••• and the badges configure a skill; they never select one. On an
+  // unselected skill the store keeps what they set in `remembered`, so the
+  // controls stay live and picking the skill later restores exactly this.
+  const requestPanel = () => {
+    if (!incompatible) togglePanel(skill.id)
+  }
+
   const flip = (patch: Parameters<typeof setSkillOption>[1]) => {
-    if (!selected) toggleSkill(skill.id)
-    setSkillOption(skill.id, patch)
+    if (!incompatible) setSkillOption(skill.id, patch)
   }
 
   // `pointerdown`, not `click`, so the panel is gone before the press
@@ -74,20 +94,28 @@ export function SkillCell({
       ref={cellRef}
       selected={selected}
       disabled={incompatible}
+      interactive={!incompatible}
       overflow={selected || open ? "visible" : "clip"}
-      className={`px-3 py-[0.6875rem] ${open ? "z-58" : ""}`}
+      className={`group/cell px-3 py-[0.6875rem] ${open ? "z-58" : ""}`}
       role="button"
       tabIndex={incompatible ? -1 : 0}
-      // Otherwise the accessible name is every string in the cell, run together.
+      // Otherwise the accessible name is every string in the cell, run
+      // together. It stays the plain name even when the skill is ruled out —
+      // `title` becomes the accessible *description*, which is where a reason
+      // belongs, and a name that changes under you is its own problem.
       aria-label={skill.displayName}
       aria-pressed={selected}
       aria-disabled={incompatible || undefined}
       title={view.incompatibleReason}
-      onClick={() => toggleSkill(skill.id)}
+      onClick={select}
       onKeyDown={(event) => {
+        // Only when the cell itself holds focus. The ••• and the badges are
+        // real buttons inside it, and their Enter would otherwise both
+        // activate them and toggle the skill underneath.
+        if (event.target !== event.currentTarget) return
         if (event.key === "Enter" || event.key === " ") {
           event.preventDefault()
-          toggleSkill(skill.id)
+          select()
         }
       }}
     >
@@ -110,6 +138,10 @@ export function SkillCell({
           </div>
         </div>
 
+        {/* Three 2px squares, not a `•••` glyph — the design draws them as
+            boxes, and a font would never land on the same rhythm. They stay in
+            the layout at zero opacity so revealing one cannot reflow the row,
+            and focus reveals them too, or the keyboard could never find them. */}
         <button
           type="button"
           aria-label={`Options for ${skill.displayName}`}
@@ -118,75 +150,75 @@ export function SkillCell({
             stop(event)
             requestPanel()
           }}
-          className={`ml-auto shrink-0 cursor-pointer px-[0.1875rem] py-px text-10 leading-[.9] font-bold tracking-[-0.03125rem] [writing-mode:vertical-rl] ${
-            open ? "text-ink" : "text-dots hover:text-subtle"
+          className={`group/dots ml-auto flex shrink-0 cursor-pointer flex-col gap-[2px] p-1 transition-opacity duration-[120ms] hover:bg-badge focus-visible:opacity-100 ${
+            open ? "opacity-100" : "opacity-0 group-hover/cell:opacity-100"
           }`}
         >
-          •••
+          {DOTS.map((dot) => (
+            <span
+              key={dot}
+              aria-hidden
+              className={`block size-[2px] ${
+                open ? "bg-brand-ink" : "bg-faint group-hover/dots:bg-brand-ink"
+              }`}
+            />
+          ))}
         </button>
       </div>
 
       <div className="mt-[0.5625rem] -ml-[0.3125rem] flex items-center gap-[0.125rem]">
         <Badge
           interactive
-          alt={entry?.install === "eject"}
+          alt={options.install === "eject"}
           render={
             <button
               type="button"
               // "plugin, button" tells a screen reader nothing on its own.
-              aria-label={`Install mode: ${entry?.install ?? "plugin"}`}
+              aria-label={`Install mode: ${options.install}`}
               onClick={(event) => {
                 stop(event)
                 flip({
-                  install: entry?.install === "eject" ? "plugin" : "eject",
+                  install: options.install === "eject" ? "plugin" : "eject",
                 })
               }}
             />
           }
         >
-          {entry?.install ?? "plugin"}
+          {options.install}
         </Badge>
 
         <Badge
           interactive
-          alt={entry?.scope === "global"}
+          alt={options.scope === "global"}
           render={
             <button
               type="button"
-              aria-label={`Scope: ${entry?.scope ?? "project"}`}
+              aria-label={`Scope: ${options.scope}`}
               onClick={(event) => {
                 stop(event)
                 flip({
-                  scope: entry?.scope === "global" ? "project" : "global",
+                  scope: options.scope === "global" ? "project" : "global",
                 })
               }}
             />
           }
         >
-          {entry?.scope ?? "project"}
+          {options.scope}
         </Badge>
 
-        {/* Derived from assignments, never stored on the skill. */}
+        {/* Derived from assignments, never stored on the skill. A label, not a
+            control: the ••• is the only way into the options panel. */}
         {selected && (
-          <button
-            type="button"
-            onClick={(event) => {
-              stop(event)
-              requestPanel()
-            }}
-            className={`ml-auto shrink-0 cursor-pointer py-[0.1875rem] font-mono text-8 font-medium tracking-[.06em] whitespace-nowrap uppercase ${
-              open ? "text-ink" : "text-muted-foreground hover:text-ink"
-            }`}
-          >
-            {agentCount === 1 ? "1 agent" : `${agentCount} agents`}
-          </button>
+          <span className="ml-auto shrink-0 py-[0.1875rem] font-mono text-8 font-medium tracking-[.06em] whitespace-nowrap text-muted-foreground uppercase">
+            {agentSummary(agentCount)}
+          </span>
         )}
       </div>
 
-      {open && entry && (
+      {open && (
         <SkillOptionsPanel
           skillId={skill.id}
-          entry={entry}
+          entry={options}
           flip={column === columns - 1}
         />
       )}

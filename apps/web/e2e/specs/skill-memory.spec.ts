@@ -25,6 +25,7 @@ test.describe("configuration survives deselection", () => {
   }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
 
+    await react.toggle()
     await react.flipInstall()
     await react.flipScope()
     await react.toggle()
@@ -39,16 +40,19 @@ test.describe("configuration survives deselection", () => {
   test("re-selecting restores sub-agent assignments", async ({ configure }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
 
+    // Selecting auto-assigned the four core agents; unassigning one is the
+    // hand-made edit that must survive the toggle.
+    await react.toggle()
     await react.openOptions()
     await react.options.cycleAssignment(MATRIX_DOMAIN, MATRIX_ROLE)
-    await expect(react.agentCount).toHaveText("1 agent")
-    await configure.roster.summary.click()
+    await expect(react.agentCount).toHaveText("3 agents")
+    await configure.roster.heading.click()
 
     await react.toggle()
     await react.toggle()
 
-    await expect(react.agentCount).toHaveText("1 agent")
-    await expect(configure.roster.summary).toContainText("1 assignments")
+    await expect(react.agentCount).toHaveText("3 agents")
+    await expect(configure.roster.skillRow(REACT, "web-developer")).toBeHidden()
   })
 
   test("re-selecting restores model and effort", async ({ configure }) => {
@@ -57,7 +61,7 @@ test.describe("configuration survives deselection", () => {
     await react.openOptions()
     await react.options.choose("opus")
     await react.options.choose("high")
-    await configure.roster.summary.click()
+    await configure.roster.heading.click()
 
     await react.toggle()
     await react.toggle()
@@ -105,7 +109,26 @@ test.describe("configuration survives deselection", () => {
     await expect(react.scopeBadge).toHaveAccessibleName("Scope: global")
   })
 
-  test("an empty skill starts blank rather than remembering nothing", async ({
+  // select() must restore the enabled:false row verbatim instead of
+  // re-running the assignment rule over it.
+  test("a row switched off in the roster survives deselect and reselect", async ({
+    configure,
+  }) => {
+    const react = configure.skillIn(web, EXCLUSIVE, REACT)
+
+    await react.toggle()
+    await configure.roster.skillRow(REACT, "web-developer").click()
+
+    await react.toggle()
+    await react.toggle()
+
+    const row = configure.roster.skillRow(REACT, "web-developer")
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute("aria-pressed", "false")
+    await expect(react.agentCount).toHaveText("3 agents")
+  })
+
+  test("an unconfigured skill starts from the rule every time", async ({
     configure,
   }) => {
     const skill = configure.skillIn(
@@ -121,7 +144,8 @@ test.describe("configuration survives deselection", () => {
     await expect(skill.installBadge).toHaveAccessibleName(
       "Install mode: plugin"
     )
-    await expect(skill.agentCount).toHaveText("0 agents")
+    // Not blank — selection auto-assigns the domain's core agents afresh.
+    await expect(skill.agentCount).toHaveText("4 agents")
   })
 })
 
@@ -147,7 +171,7 @@ test.describe("configuration survives an exclusive swap", () => {
     await react.flipInstall()
     await react.openOptions()
     await react.options.cycleAssignment(MATRIX_DOMAIN, MATRIX_ROLE)
-    await configure.roster.summary.click()
+    await configure.roster.heading.click()
 
     await vue.toggle()
     await expect(react.root).toHaveAttribute("aria-pressed", "false")
@@ -155,7 +179,7 @@ test.describe("configuration survives an exclusive swap", () => {
     await react.toggle()
 
     await expect(react.installBadge).toHaveAccessibleName("Install mode: eject")
-    await expect(react.agentCount).toHaveText("1 agent")
+    await expect(react.agentCount).toHaveText("3 agents")
     await expect(vue.root).toHaveAttribute("aria-pressed", "false")
   })
 })
@@ -167,8 +191,9 @@ test.describe("memory boundaries", () => {
   }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
 
+    // Set aside without selecting — nothing is at stake, so the stack applies
+    // without a confirm, and it is the stack that must clear the memory.
     await react.flipInstall()
-    await react.toggle()
     await configure.chooseStack(STACKS.t3)
     await react.toggle()
 
@@ -182,16 +207,17 @@ test.describe("memory boundaries", () => {
   }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
 
-    await react.openOptions()
-    await react.options.cycleAssignment(MATRIX_DOMAIN, MATRIX_ROLE)
-    await configure.roster.summary.click()
+    await react.toggle()
+    await expect(
+      configure.roster.skillRow(REACT, "web-developer")
+    ).toBeVisible()
+
     await react.toggle()
 
-    await expect(configure.roster.summary).toContainText("0 skills")
-    await expect(configure.roster.summary).toContainText("0 assignments")
-    await expect(configure.roster.root).toContainText(
-      "No sub-agents assigned yet."
+    await expect(configure.roster.installButton).toContainText(
+      "0 sub-agents and 0 skills"
     )
+    await expect(configure.roster.skillRow(REACT, "web-developer")).toBeHidden()
   })
 
   test("memory survives a reload", async ({ configure, page }) => {

@@ -15,6 +15,7 @@ import {
   SegmentedItem,
 } from "@workspace/ui/components/segmented"
 import { cn } from "@workspace/ui/lib/utils"
+import { useState } from "react"
 
 import { useConfigStore } from "@/stores/config-store"
 import type { LoadState, SkillEntry } from "@/stores/persisted-schema"
@@ -22,17 +23,18 @@ import type { LoadState, SkillEntry } from "@/stores/persisted-schema"
 const MODELS = ["opus", "fable", "sonnet", "haiku"] as const
 const EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const
 
-// The four canonical roles the design's matrix has columns for. Real agent ids
-// are `<domain>-<role>`, and 14 of the 23 agents fall into this grid; the other
-// nine (web-pm, web-architecture, api-pm, the meta agents…) have roles the
-// matrix has no column for and are listed beneath it instead, so nothing in
-// the catalogue is unassignable.
+// The design's unified matrix: the same four role columns over every
+// implementation domain, with Meta held out as the stated exception. These are
+// also exactly the roles auto-assignment targets, so the grid shows what a
+// selection just did.
 const ROLE_COLUMNS = [
   { id: "developer", short: "dev" },
-  { id: "reviewer", short: "review" },
+  { id: "pm", short: "pm" },
+  { id: "reviewer", short: "rev" },
   { id: "tester", short: "test" },
-  { id: "researcher", short: "research" },
 ] as const
+
+type RoleColumn = (typeof ROLE_COLUMNS)[number]
 
 const CANONICAL_ROLES = new Set<string>(ROLE_COLUMNS.map((role) => role.id))
 
@@ -42,9 +44,6 @@ const roleOf = (agentId: string, domainId: Domain) =>
 
 const isCanonicalRole = (role: string | null): role is string =>
   role !== null && CANONICAL_ROLES.has(role)
-
-const fitsTheGrid = (agent: SubAgent, domainId: Domain) =>
-  isCanonicalRole(roleOf(agent.id, domainId))
 
 const canonicalAgentsByRole = (group: SubAgentGroup) => {
   const byRole = new Map<string, SubAgent>()
@@ -60,21 +59,73 @@ const canonicalAgentsByRole = (group: SubAgentGroup) => {
 const hasAnyRole = (group: { byRole: Map<string, SubAgent> }) =>
   group.byRole.size > 0
 
-// Domains that actually have at least one canonical-role agent.
-const matrixGroups = SUB_AGENT_GROUPS.map((group) => ({
-  domainId: group.domainId,
-  label: group.label,
-  byRole: canonicalAgentsByRole(group),
-})).filter(hasAnyRole)
-
-// Everything the 4-column grid cannot express.
-const extraAgents = SUB_AGENT_GROUPS.flatMap((group) =>
-  group.agents.filter((agent) => !fitsTheGrid(agent, group.domainId))
+const implementationGroups = SUB_AGENT_GROUPS.filter(
+  (group) => group.domainId !== "meta"
 )
+
+// Implementation domains that actually have at least one role-column agent.
+//
+// The grid is deliberately the whole story for these domains: the design draws
+// the four roles and nothing else, because the CLI is unifying every domain
+// onto exactly this set (docs/subagents-todo.md). The catalogue's leftovers —
+// web-architecture, web-pattern-critique, the researchers — still take skills
+// from a stack and still appear in the roster, where they can be switched off;
+// they are just not hand-assignable here.
+type MatrixGroup = {
+  domainId: Domain
+  label: string
+  byRole: Map<string, SubAgent>
+}
+
+const matrixGroups: MatrixGroup[] = implementationGroups
+  .map((group) => ({
+    domainId: group.domainId,
+    label: group.label,
+    byRole: canonicalAgentsByRole(group),
+  }))
+  .filter(hasAnyRole)
+
+// The exception, folded shut by default behind the design's `＋`.
+const metaAgents = SUB_AGENT_GROUPS.filter(
+  (group) => group.domainId === "meta"
+).flatMap((group) => group.agents)
 
 // Reads as the word it is: nothing, `lazy`, or `pre`.
 const loadWord = (state: LoadState | null) =>
   state === "preloaded" ? "pre" : (state ?? "")
+
+// A switched-off row reads as unassigned here: the matrix answers "where does
+// this install", and cycling an off cell starts it over at lazy.
+const liveLoad = (entry: SkillEntry, agentId: string): LoadState | null => {
+  const assignment = entry.assignments[agentId]
+  return assignment?.enabled ? assignment.load : null
+}
+
+// An agent row the grid cannot place: the same cell, labelled and full width.
+function LabelledAgentCell({
+  agent,
+  state,
+  onCycle,
+}: {
+  agent: SubAgent
+  state: LoadState | null
+  onCycle: () => void
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onCycle}
+      // The tri-state styling comes from the one CVA so the two can never drift.
+      className={cn(
+        matrixCellVariants({ state: state ?? "empty" }),
+        "justify-between px-[0.3125rem]"
+      )}
+    >
+      <span className="truncate">{agent.id}</span>
+      <span>{loadWord(state)}</span>
+    </button>
+  )
+}
 
 // The `•••` popover. Opens to the right of its cell, top-aligned, and flips to
 // the left for cells in the last column so it cannot escape the main column.
@@ -92,21 +143,29 @@ export function SkillOptionsPanel({
 }) {
   const setSkillOption = useConfigStore((state) => state.setSkillOption)
   const cycleAssignment = useConfigStore((state) => state.cycleAssignment)
+  const [metaOpen, setMetaOpen] = useState(false)
 
-  const rows: MatrixRow[] = matrixGroups.map((group) => ({
+  // Both close over the open skill, so they live here rather than at module
+  // scope — but they are still named, so the grid below reads as one line.
+  const toMatrixCell = (group: MatrixGroup, role: RoleColumn) => {
+    const agent = group.byRole.get(role.id)
+    if (!agent) return null
+
+    return {
+      key: agent.id,
+      label: role.short,
+      state: liveLoad(entry, agent.id),
+      onCycle: () => cycleAssignment(skillId, agent.id),
+    }
+  }
+
+  const toMatrixRow = (group: MatrixGroup): MatrixRow => ({
     key: group.domainId,
     label: group.label,
-    cells: ROLE_COLUMNS.map((role) => {
-      const agent = group.byRole.get(role.id)
-      if (!agent) return null
-      return {
-        key: agent.id,
-        label: role.short,
-        state: entry.assignments[agent.id] ?? null,
-        onCycle: () => cycleAssignment(skillId, agent.id),
-      }
-    }),
-  }))
+    cells: ROLE_COLUMNS.map((role) => toMatrixCell(group, role)),
+  })
+
+  const rows = matrixGroups.map(toMatrixRow)
 
   return (
     <div
@@ -178,28 +237,30 @@ export function SkillOptionsPanel({
           rows={rows}
         />
 
-        {extraAgents.length > 0 && (
+        <button
+          type="button"
+          aria-expanded={metaOpen}
+          onClick={() => setMetaOpen((open) => !open)}
+          className="group flex w-full cursor-pointer items-center gap-2 pt-2 text-left"
+        >
+          <span className="font-mono text-8 font-semibold tracking-[.06em] text-ink-3 uppercase">
+            Meta
+          </span>
+          <span className="ml-auto font-mono text-10 font-normal text-dots group-hover:text-ink">
+            {metaOpen ? "−" : "＋"}
+          </span>
+        </button>
+
+        {metaOpen && (
           <div className="mt-[0.375rem] flex flex-col gap-[0.125rem]">
-            {extraAgents.map((agent) => {
-              const state = entry.assignments[agent.id] ?? null
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  onClick={() => cycleAssignment(skillId, agent.id)}
-                  // Same cell as the matrix above, just labelled and full width
-                  // — the tri-state styling comes from the one CVA so the two
-                  // can never drift.
-                  className={cn(
-                    matrixCellVariants({ state: state ?? "empty" }),
-                    "justify-between px-[0.3125rem]"
-                  )}
-                >
-                  <span className="truncate">{agent.id}</span>
-                  <span>{loadWord(state)}</span>
-                </button>
-              )
-            })}
+            {metaAgents.map((agent) => (
+              <LabelledAgentCell
+                key={agent.id}
+                agent={agent}
+                state={liveLoad(entry, agent.id)}
+                onCycle={() => cycleAssignment(skillId, agent.id)}
+              />
+            ))}
           </div>
         )}
       </div>

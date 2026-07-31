@@ -37,6 +37,36 @@ export const MULTI_CATEGORY = {
 // In the Next.js stack's expansion, so it is selected after applying it.
 export const STACK_MEMBER_SKILL = "React"
 
+// An incompatibility that only exists several hops out: SvelteKit is built on
+// Svelte, and Svelte conflicts with React — nothing links React to SvelteKit
+// directly. `blocked` sits in a different category from `trigger`, so the
+// exclusive-sibling exemption cannot account for it.
+export const INCOMPATIBLE = {
+  trigger: "React",
+  triggerCategory: "Framework",
+  blocked: "SvelteKit",
+  blockedCategory: "Meta-Framework",
+  reason: "Needs Svelte",
+  // Reached through two requirements rather than one.
+  blockedTransitively: "Nuxt",
+  transitiveCategory: "Meta-Framework",
+} as const
+
+// The other direction: choosing `implier` chooses `implied` too, so everything
+// `implied` conflicts with goes — even though `implier` names none of it.
+// `blocked` sits in `implied`'s own exclusive category, which is what makes the
+// sibling exemption the interesting part.
+export const IMPLIED = {
+  implier: "Next.js",
+  implierCategory: "Meta-Framework",
+  implied: "React",
+  impliedCategory: "Framework",
+  blocked: "Angular",
+  reason: "Conflicts with React",
+  // A sibling of the implier, so swapping between them still has to work.
+  implierSibling: "Remix",
+} as const
+
 export const SKILL_OPTIONS = {
   models: ["opus", "fable", "sonnet", "haiku"],
   efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],

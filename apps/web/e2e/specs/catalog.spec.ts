@@ -2,6 +2,7 @@ import { expect, test } from "../fixtures"
 import {
   DOMAINS,
   EXCLUSIVE_CATEGORY,
+  INCOMPATIBLE,
   MULTI_CATEGORY,
   STACKS,
 } from "../support/catalog"
@@ -49,5 +50,27 @@ test.describe("catalog assumptions", () => {
     await expect(
       configure.skill(MULTI_CATEGORY.second, category).root
     ).toBeVisible()
+  })
+
+  // The relationship data is upstream and can be re-authored, so the pair the
+  // incompatibility spec leans on gets its own guard: if the requirement chain
+  // is ever rewritten, this names it rather than the eight specs downstream.
+  test("the incompatible pair still is one", async ({ configure }) => {
+    const trigger = configure.skillIn(
+      DOMAINS.web,
+      INCOMPATIBLE.triggerCategory,
+      INCOMPATIBLE.trigger
+    )
+    const blocked = configure.skillIn(
+      DOMAINS.web,
+      INCOMPATIBLE.blockedCategory,
+      INCOMPATIBLE.blocked
+    )
+
+    await expect(blocked.root).toBeEnabled()
+    await trigger.toggle()
+
+    await expect(blocked.root).toBeDisabled()
+    expect(await blocked.incompatibleReason()).toBe(INCOMPATIBLE.reason)
   })
 })
