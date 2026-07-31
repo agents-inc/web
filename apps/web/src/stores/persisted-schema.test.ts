@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest"
 import {
   DEFAULT_SKILL_OPTIONS,
   PERSIST_VERSION,
+  isAgentOn,
   isWorthRemembering,
   migrateConfig,
   pruneUnknownIds,
@@ -26,6 +27,10 @@ const KNOWN_STACK = STACKS[0]!.id
 const GONE_SKILL = "removed-in-a-later-release"
 const GONE_AGENT = "retired-agent"
 
+const LIVE = { load: "lazy", enabled: true } as const
+const PRE = { load: "preloaded", enabled: true } as const
+const OFF = { load: "preloaded", enabled: false } as const
+
 const entry = (over: Partial<SkillEntry> = {}): SkillEntry => ({
   ...DEFAULT_SKILL_OPTIONS,
   assignments: {},
@@ -36,6 +41,7 @@ const config = (over: Partial<PersistedConfig> = {}): PersistedConfig => ({
   stackId: null,
   skills: {},
   remembered: {},
+  pins: {},
   ...over,
 })
 
@@ -53,14 +59,59 @@ describe("isWorthRemembering", () => {
     expect(isWorthRemembering(entry(over))).toBe(true)
   })
 
-  // The case the guard exists for. A stack hands a skill its assignments
-  // without the user clicking anything, and losing those to a stray toggle is
-  // exactly as costly as losing ones built by hand.
+  // The case the guard exists for. A stack — or the auto-assignment rule —
+  // hands a skill its assignments without the user clicking anything, and
+  // losing those to a stray toggle is exactly as costly as hand-built ones.
   it("keeps a stack-provided entry whose only content is assignments", () => {
-    const stackProvided = entry({ assignments: { [KNOWN_AGENT]: "preloaded" } })
+    const stackProvided = entry({ assignments: { [KNOWN_AGENT]: PRE } })
 
     expect(stackProvided).toMatchObject(DEFAULT_SKILL_OPTIONS)
     expect(isWorthRemembering(stackProvided)).toBe(true)
+  })
+
+  // A switched-off row is still a decision — restoring it recessed is the
+  // whole point of keeping it, so it counts as content.
+  it("keeps an entry whose only content is disabled rows", () => {
+    expect(
+      isWorthRemembering(entry({ assignments: { [KNOWN_AGENT]: OFF } }))
+    ).toBe(true)
+  })
+})
+
+describe("isAgentOn", () => {
+  it("is off with no skills and no pin", () => {
+    expect(isAgentOn(config(), KNOWN_AGENT)).toBe(false)
+  })
+
+  it("derives on from holding an enabled skill", () => {
+    const holding = config({
+      skills: {
+        [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
+      },
+    })
+
+    expect(isAgentOn(holding, KNOWN_AGENT)).toBe(true)
+  })
+
+  it("stays off when its only assignment is disabled", () => {
+    const disabled = config({
+      skills: { [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: OFF } }) },
+    })
+
+    expect(isAgentOn(disabled, KNOWN_AGENT)).toBe(false)
+  })
+
+  it("lets a pin override the derived state in both directions", () => {
+    const holding = config({
+      skills: {
+        [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
+      },
+      pins: { [KNOWN_AGENT]: false },
+    })
+    const bare = config({ pins: { [KNOWN_AGENT]: true } })
+
+    expect(isAgentOn(holding, KNOWN_AGENT)).toBe(false)
+    expect(isAgentOn(bare, KNOWN_AGENT)).toBe(true)
   })
 })
 
@@ -69,8 +120,9 @@ describe("pruneUnknownIds", () => {
     const kept = config({
       stackId: KNOWN_STACK,
       skills: {
-        [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: "lazy" } }),
+        [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
       },
+      pins: { [KNOWN_AGENT]: true },
     })
 
     expect(pruneUnknownIds(kept)).toEqual(kept)
@@ -89,15 +141,23 @@ describe("pruneUnknownIds", () => {
       config({
         skills: {
           [KNOWN_SKILL]: entry({
-            assignments: { [KNOWN_AGENT]: "lazy", [GONE_AGENT]: "preloaded" },
+            assignments: { [KNOWN_AGENT]: LIVE, [GONE_AGENT]: PRE },
           }),
         },
       })
     )
 
     expect(pruned.skills[KNOWN_SKILL]!.assignments).toEqual({
-      [KNOWN_AGENT]: "lazy",
+      [KNOWN_AGENT]: LIVE,
     })
+  })
+
+  it("drops a retired sub-agent's pin", () => {
+    const pruned = pruneUnknownIds(
+      config({ pins: { [KNOWN_AGENT]: true, [GONE_AGENT]: false } })
+    )
+
+    expect(pruned.pins).toEqual({ [KNOWN_AGENT]: true })
   })
 
   it("falls back to no stack when the stack is gone", () => {
@@ -113,7 +173,7 @@ describe("pruneUnknownIds", () => {
         remembered: {
           [GONE_SKILL]: entry(),
           [KNOWN_SKILL]: entry({
-            assignments: { [KNOWN_AGENT]: "lazy", [GONE_AGENT]: "lazy" },
+            assignments: { [KNOWN_AGENT]: LIVE, [GONE_AGENT]: LIVE },
           }),
         },
       })
@@ -121,7 +181,7 @@ describe("pruneUnknownIds", () => {
 
     expect(Object.keys(pruned.remembered)).toEqual([KNOWN_SKILL])
     expect(pruned.remembered[KNOWN_SKILL]!.assignments).toEqual({
-      [KNOWN_AGENT]: "lazy",
+      [KNOWN_AGENT]: LIVE,
     })
   })
 })

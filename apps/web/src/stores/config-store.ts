@@ -7,27 +7,40 @@ import {
 import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
+import { defaultAssignmentsFor } from "@/features/configure/lib/default-assignments"
 import { useAddedSkillsStore } from "./added-skills-store"
 import {
   DEFAULT_SKILL_OPTIONS,
   PERSIST_VERSION,
+  isAgentOn,
   isWorthRemembering,
   migrateConfig,
   persistedConfigSchema,
   pruneUnknownIds,
-  type LoadState,
+  type Assignment,
   type PersistedConfig,
   type SkillEntry,
   type SkillOptions,
 } from "./persisted-schema"
+import { useUiStore } from "./ui-store"
 
 type ConfigActions = {
   // Replaces the whole selection. `null` is "Start from scratch".
   applyStack: (stackId: string | null) => void
   toggleSkill: (skillId: string) => void
   setSkillOption: (skillId: string, patch: Partial<SkillOptions>) => void
-  // empty → lazy → preloaded → empty, per the design's matrix cell.
+  // empty → lazy → preloaded → empty, per the design's matrix cell. A row the
+  // roster switched off counts as empty, so cycling it re-enables at lazy.
   cycleAssignment: (skillId: string, agentId: string) => void
+  // The roster's row click: keep the assignment, flip whether it is live.
+  toggleAssignmentEnabled: (skillId: string, agentId: string) => void
+  // The roster's load word: pre ↔ lazy for that one agent.
+  flipAssignmentLoad: (skillId: string, agentId: string) => void
+  // The roster's agent click: pin the agent to the opposite of what it
+  // currently derives to. Explicit in both directions, exactly like the design
+  // — a pinned-off agent stays off as skills arrive, a pinned-on one installs
+  // bare.
+  toggleAgentPin: (agentId: string) => void
   // The inbound half of sharing: a fetched config replaces the selection
   // wholesale, exactly as applying a stack does.
   importConfig: (config: PersistedConfig) => void
@@ -39,14 +52,11 @@ export type ConfigState = PersistedConfig & ConfigActions
 type SkillMap = PersistedConfig["skills"]
 type Assignments = SkillEntry["assignments"]
 
-const NEW_ENTRY: SkillEntry = { ...DEFAULT_SKILL_OPTIONS, assignments: {} }
-
-const EMPTY: PersistedConfig = { stackId: null, skills: {}, remembered: {} }
-
-const NEXT_LOAD_STATE: Record<string, LoadState | undefined> = {
-  "": "lazy",
-  lazy: "preloaded",
-  preloaded: undefined,
+const EMPTY: PersistedConfig = {
+  stackId: null,
+  skills: {},
+  remembered: {},
+  pins: {},
 }
 
 // ── Plain helpers ────────────────────────────────────────────────────────
@@ -78,6 +88,14 @@ const isKnownSkill = (skillId: string) =>
 
 const isInCategory = (skillId: string, categoryId: string) =>
   CATALOG.skillsById[skillId]?.categoryId === categoryId
+
+// The skill's category, wherever it is known: the catalog for its own skills,
+// the session store for added ones (their category comes from the marketplace
+// index and may be absent — those assign nowhere).
+const categoryIdOf = (skillId: string) =>
+  CATALOG.skillsById[skillId]?.categoryId ??
+  useAddedSkillsStore.getState().added.find((skill) => skill.id === skillId)
+    ?.categoryId
 
 // The skill's category, but only when picking one replaces the others.
 const exclusiveCategoryOf = (skillId: string) => {
@@ -133,21 +151,92 @@ const deselect = (
   remembered: setAside(state.remembered, skillId, entry),
 })
 
-// Restores what was set aside; a skill never configured starts blank.
+// What a never-configured skill starts as: the rule's assignments, reaching
+// its domain's core agents, which is what enables them. Exported because the
+// cell shows this before the skill is selected — what you see in the ••• panel
+// has to be what picking the skill would actually give you.
+export const freshEntry = (skillId: string): SkillEntry => ({
+  ...DEFAULT_SKILL_OPTIONS,
+  assignments: defaultAssignmentsFor(categoryIdOf(skillId)),
+})
+
+// A remembered skill restores exactly what it had instead; the rule must not
+// overwrite a setup the user already shaped.
 const select = (state: PersistedConfig, skillId: string) => {
   const { skills, remembered } = clearExclusiveSiblings(state, skillId)
 
   return {
-    skills: { ...skills, [skillId]: remembered[skillId] ?? { ...NEW_ENTRY } },
+    skills: {
+      ...skills,
+      [skillId]: remembered[skillId] ?? freshEntry(skillId),
+    },
     remembered: withoutKey(remembered, skillId),
   }
 }
 
-const cycled = (assignments: Assignments, agentId: string) => {
-  const next = NEXT_LOAD_STATE[assignments[agentId] ?? ""]
-  if (!next) return withoutKey(assignments, agentId)
+// The agents an entry actually reaches — a switched-off row does not pulse.
+const liveAgentIds = (entry: SkillEntry | undefined) =>
+  Object.entries(entry?.assignments ?? {})
+    .filter(([, assignment]) => assignment.enabled)
+    .map(([agentId]) => agentId)
 
-  return { ...assignments, [agentId]: next }
+const cycled = (assignments: Assignments, agentId: string): Assignments => {
+  const current = assignments[agentId]
+
+  if (!current || !current.enabled)
+    return { ...assignments, [agentId]: { load: "lazy", enabled: true } }
+  if (current.load === "lazy")
+    return { ...assignments, [agentId]: { load: "preloaded", enabled: true } }
+
+  return withoutKey(assignments, agentId)
+}
+
+// Configuring a skill must not select it — the ••• and the badges are their
+// own controls, not a way in. So an unselected skill's options go where a
+// deselected one's already go, and `select` restores them verbatim when the
+// skill is eventually picked. Entries that end up saying nothing are dropped
+// rather than left behind.
+const configure = (
+  state: PersistedConfig,
+  skillId: string,
+  change: (entry: SkillEntry) => SkillEntry
+) => {
+  const selected = state.skills[skillId]
+  if (selected) {
+    return { skills: { ...state.skills, [skillId]: change(selected) } }
+  }
+
+  if (!isKnownSkill(skillId)) return {}
+
+  // Starting from a fresh entry rather than a blank one, so a skill
+  // configured before it is picked still arrives with its agents.
+  const next = change(state.remembered[skillId] ?? freshEntry(skillId))
+  return {
+    remembered: isWorthRemembering(next)
+      ? { ...state.remembered, [skillId]: next }
+      : withoutKey(state.remembered, skillId),
+  }
+}
+
+const patchAssignment = (
+  state: PersistedConfig,
+  skillId: string,
+  agentId: string,
+  change: (current: Assignment) => Assignment
+) => {
+  const entry = state.skills[skillId]
+  const current = entry?.assignments[agentId]
+  if (!entry || !current) return {}
+
+  return {
+    skills: {
+      ...state.skills,
+      [skillId]: {
+        ...entry,
+        assignments: { ...entry.assignments, [agentId]: change(current) },
+      },
+    },
+  }
 }
 
 // ── Stack expansion ──────────────────────────────────────────────────────
@@ -156,8 +245,11 @@ const toAssignments = (
   agentIds: readonly string[],
   preloaded: boolean
 ): Assignments => {
-  const load: LoadState = preloaded ? "preloaded" : "lazy"
-  return Object.fromEntries(agentIds.map((agentId) => [agentId, load]))
+  const assignment: Assignment = {
+    load: preloaded ? "preloaded" : "lazy",
+    enabled: true,
+  }
+  return Object.fromEntries(agentIds.map((agentId) => [agentId, assignment]))
 }
 
 const toStackSkills = (expansion: StackExpansion): SkillMap => {
@@ -185,10 +277,13 @@ const onlyCatalogSkills = (skills: SkillMap) =>
 
 export const useConfigStore = create<ConfigState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       ...EMPTY,
 
       applyStack: (stackId) => {
+        // Whatever was pulsing belonged to the selection being replaced.
+        useUiStore.getState().clearFlash()
+
         if (stackId === null) {
           set({ ...EMPTY })
           return
@@ -202,10 +297,13 @@ export const useConfigStore = create<ConfigState>()(
           skills: toStackSkills(expansion),
           // The explicit start-over action, which already confirms first.
           remembered: {},
+          pins: {},
         })
       },
 
-      toggleSkill: (skillId) =>
+      toggleSkill: (skillId) => {
+        const selecting = !(skillId in get().skills)
+
         set((state) => {
           const current = state.skills[skillId]
 
@@ -213,37 +311,58 @@ export const useConfigStore = create<ConfigState>()(
           if (!isKnownSkill(skillId)) return {}
 
           return select(state, skillId)
-        }),
+        })
+
+        // The roster's pulse narrates the selection behind it, so a deselect
+        // flashes nobody — which clears whatever was still running. Read back
+        // rather than recomputed, so a restored entry flashes what it restored.
+        const reached = selecting ? get().skills[skillId] : undefined
+        useUiStore.getState().flashAgents(liveAgentIds(reached))
+      },
 
       setSkillOption: (skillId, patch) =>
-        set((state) => {
-          const entry = state.skills[skillId]
-          if (!entry) return {}
-
-          return {
-            skills: { ...state.skills, [skillId]: { ...entry, ...patch } },
-          }
-        }),
+        set((state) =>
+          configure(state, skillId, (entry) => ({ ...entry, ...patch }))
+        ),
 
       cycleAssignment: (skillId, agentId) =>
-        set((state) => {
-          const entry = state.skills[skillId]
-          if (!entry) return {}
+        set((state) =>
+          configure(state, skillId, (entry) => ({
+            ...entry,
+            assignments: cycled(entry.assignments, agentId),
+          }))
+        ),
 
-          return {
-            skills: {
-              ...state.skills,
-              [skillId]: {
-                ...entry,
-                assignments: cycled(entry.assignments, agentId),
-              },
-            },
-          }
-        }),
+      toggleAssignmentEnabled: (skillId, agentId) =>
+        set((state) =>
+          patchAssignment(state, skillId, agentId, (current) => ({
+            ...current,
+            enabled: !current.enabled,
+          }))
+        ),
 
-      importConfig: (config) => set({ ...config }),
+      flipAssignmentLoad: (skillId, agentId) =>
+        set((state) =>
+          patchAssignment(state, skillId, agentId, (current) => ({
+            ...current,
+            load: current.load === "preloaded" ? "lazy" : "preloaded",
+          }))
+        ),
 
-      reset: () => set({ ...EMPTY }),
+      toggleAgentPin: (agentId) =>
+        set((state) => ({
+          pins: { ...state.pins, [agentId]: !isAgentOn(state, agentId) },
+        })),
+
+      importConfig: (config) => {
+        useUiStore.getState().clearFlash()
+        set({ ...config })
+      },
+
+      reset: () => {
+        useUiStore.getState().clearFlash()
+        set({ ...EMPTY })
+      },
     }),
     {
       name: "agents-inc:config:v1",
@@ -251,10 +370,11 @@ export const useConfigStore = create<ConfigState>()(
       migrate: migrateConfig,
       // Session-added skills have no catalog entry, so a persisted selection
       // for one would resurrect a skill the next session cannot describe.
-      partialize: ({ stackId, skills, remembered }) => ({
+      partialize: ({ stackId, skills, remembered, pins }) => ({
         stackId,
         skills: onlyCatalogSkills(skills),
         remembered: onlyCatalogSkills(remembered),
+        pins,
       }),
       // The one untrusted boundary: anything unparseable is discarded in
       // favour of empty state rather than crashing the app.
