@@ -2,7 +2,8 @@
 
 Scope: the **Configure** screen. Docs, Share and Settings get a route + empty shell.
 Design source of truth: `.claude-design/README.md` + `.claude-design/design/Configurator v5.dc.html`,
-with `.claude-design/design/DESIGN_DECISIONS.md` as the rationale log.
+with `.claude-design/screens/*.png` (2–4× captures at a 1741px viewport) as the visual reference
+every §8 adaptation below is measured against.
 
 > **v5 supersedes v2.** The earlier warm-paper, rounded, sliding-highlight language is gone. This
 > document describes what is built now; §8 records where the implementation deliberately departs
@@ -14,14 +15,14 @@ with `.claude-design/design/DESIGN_DECISIONS.md` as the rationale log.
 
 ### Package layout
 
-| Package                       | Owns                                                                                   |
-| ----------------------------- | -------------------------------------------------------------------------------------- |
-| `packages/matrix`             | Vendored CLI catalog, zod schemas, the read model, stack expansion. Pure TS — no React.  |
-| `packages/ui`                 | The design system: tokens + 11 primitives. No app knowledge.                            |
-| `packages/typescript-config`  | `base` / `react-library` / `vite-app` / `node` tsconfigs.                                |
-| `packages/eslint-config`      | `base` / `react-library` / `react-app` flat configs.                                     |
-| `packages/prettier-config`    | The single Prettier config, declared once in the root `package.json`.                     |
-| `apps/web`                    | Routes, stores, feature components, derivations, the GitHub API seam.                    |
+| Package                      | Owns                                                                                    |
+| ---------------------------- | --------------------------------------------------------------------------------------- |
+| `packages/matrix`            | Vendored CLI catalog, zod schemas, the read model, stack expansion. Pure TS — no React. |
+| `packages/ui`                | The design system: tokens + 11 primitives. No app knowledge.                            |
+| `packages/typescript-config` | `base` / `react-library` / `vite-app` / `node` tsconfigs.                               |
+| `packages/eslint-config`     | `base` / `react-library` / `react-app` flat configs.                                    |
+| `packages/prettier-config`   | The single Prettier config, declared once in the root `package.json`.                   |
+| `apps/web`                   | Routes, stores, feature components, derivations, the GitHub API seam.                   |
 
 `noUnusedLocals` / `noUnusedParameters` stay unset everywhere — every workspace holds code it does
 not author (vendored CLI types, generated icon map), and tsc has no per-directory escape. ESLint's
@@ -46,12 +47,12 @@ boundary, so the app performs no second parse.
 
 ### Decisions
 
-| Question     | Decision                                                    | Rationale                                                          |
-| ------------ | ----------------------------------------------------------- | ------------------------------------------------------------------ |
-| Router       | `@tanstack/react-router` v1, code-based routes               | `validateSearch` + zod gives a typed, validated URL boundary.       |
-| Table        | **Removed.** `@tanstack/react-table` is gone.                | v5 renders skills as grid cells; there is no table left to build.   |
+| Question     | Decision                                                       | Rationale                                                         |
+| ------------ | -------------------------------------------------------------- | ----------------------------------------------------------------- |
+| Router       | `@tanstack/react-router` v1, code-based routes                 | `validateSearch` + zod gives a typed, validated URL boundary.     |
+| Table        | **Removed.** `@tanstack/react-table` is gone.                  | v5 renders skills as grid cells; there is no table left to build. |
 | Server state | No react-query. One `fetch` behind `lib/api/github-skills.ts`. | Adopt on the second API call.                                     |
-| Icons        | `simple-icons` (raw path data) + hand-checked map            | Drawn in `currentColor`, never brand colour — see §4 rule 4.        |
+| Icons        | `simple-icons` (raw path data) + hand-checked map              | Drawn in `currentColor`, never brand colour — see §4 rule 4.      |
 
 ---
 
@@ -65,7 +66,8 @@ Five rules generate almost everything, and every primitive in `packages/ui` exis
 3. **Two typefaces, strictly divided.** Inter for human names and descriptions; IBM Plex Mono for
    every label, id, badge, count and command, uppercase with wide tracking.
 4. **One accent colour.** Amber marks what the user deliberately chose or changed. Hover states stay
-   neutral, and skill logos render in `currentColor` rather than their brand colour.
+   neutral, and skill logos render in `currentColor` rather than their brand colour. There is no
+   second signal colour: a skill the selection has ruled out is dimmed, not reddened — see §7.
 5. **Whitespace, not rules, separates content.** Two kinds of horizontal rule exist: the full-bleed
    section divider and the collapsed cell lattice.
 
@@ -79,35 +81,49 @@ palette in `:root`, so generated components inherit the language without per-com
 ### Config store — `apps/web/src/stores/config-store.ts` (persisted, v2)
 
 ```ts
+type Assignment = {
+  load: "lazy" | "preloaded"
+  enabled: boolean // a roster row switched off keeps its load mode and its row
+}
+
 type SkillEntry = {
-  model: "opus" | "sonnet" | "haiku"
-  effort: "none" | "low" | "med" | "high"
+  model: "opus" | "fable" | "sonnet" | "haiku"
+  effort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
   install: "plugin" | "eject"
   scope: "project" | "global"
-  assignments: Record<AgentId, "lazy" | "preloaded">
+  assignments: Record<AgentId, Assignment>
 }
 
 type ConfigState = {
-  stackId: string | null                    // null = "Start from scratch"
-  skills: Partial<Record<SkillId, SkillEntry>>  // SPARSE — presence *is* selection
-  remembered: Partial<Record<SkillId, SkillEntry>>  // deselected, not discarded
+  stackId: string | null // null = "Start from scratch"
+  skills: Partial<Record<SkillId, SkillEntry>> // SPARSE — presence *is* selection
+  remembered: Partial<Record<SkillId, SkillEntry>> // deselected, not discarded
+  pins: Partial<Record<AgentId, boolean>> // explicit agent on/off overrides
 }
 ```
+
+**Selecting assigns automatically.** A fresh selection arrives with the rule's assignments
+(`lib/default-assignments.ts`): the core roles (developer · pm · reviewer · tester) of the
+skill's domain, `shared` reaching every implementation domain, `meta` never implicit; loads
+default lazy except the matrix's `required` / `*-framework` categories (preloaded) and testing
+skills (preloaded only on their own tester). An agent is **on** when a pin says so, else when
+it holds ≥ 1 enabled skill (`isAgentOn`) — selecting a skill is what switches its agents on,
+and the roster flashes the agents a selection just reached.
 
 **Deselecting is not destructive.** One click removes a skill; the configuration behind it can be a
 dozen — nine sub-agent assignments, a model, an effort — and the cell gives no warning, because
 deselect reads as "not included" rather than "erase my work". A deselected entry moves to
 `remembered` and is restored if the skill is selected again.
 
-One rule covers both cases, with no special case per category: *a skill remembers how you configured
-it; a skill you have never configured starts blank.* An exclusive swap evicts the sibling, which is
+One rule covers both cases, with no special case per category: _a skill remembers how you configured
+it; a skill you have never configured starts blank._ An exclusive swap evicts the sibling, which is
 a deselection the user did not click, so it keeps the same promise — pick Vue over React and React
 returns configured when you pick it back, while Vue starts blank because it has never been
 configured.
 
 Two boundaries stop this becoming a leak. `isWorthRemembering` drops entries that carry no
 information at all — default options, no assignments — which is what a blank skill selected and
-immediately deselected looks like; note that a stack-applied skill arrives *with* assignments and so
+immediately deselected looks like; note that a stack-applied skill arrives _with_ assignments and so
 is always remembered. And `applyStack` clears the map, because it is the explicit start-over action
 and already confirms first when edits would be lost.
 
@@ -130,27 +146,28 @@ one is allowed because `toggleSkill`'s catalog guard widens to "catalog **or** s
 
 ### UI store — `apps/web/src/stores/ui-store.ts`
 
-`openPanelSkillId` · `pendingStackId` · `dialog` · `rosterCollapsed` (the only persisted field).
+`openPanelSkillId` · `pendingStackId` · `dialog` · `rosterCollapsed` (per-domain accordion
+map, the only persisted field) · `flashedAgentIds` (the roster pulse, decays after 2.6s).
 
 `stuck` is deliberately **not** here — see §6.
 
 ### Persistence
 
-| Concern    | Approach                                                                                  |
-| ---------- | ------------------------------------------------------------------------------------------- |
-| Key        | `agents-inc:config:v1` / `agents-inc:ui:v1`                                                 |
-| Validation | `merge` → `safeParse`; on failure **return current** (silent reset, log in dev)              |
-| Stale ids  | `pruneUnknownIds` drops skill/stack/agent ids absent from the regenerated catalog            |
-| Migration  | `PERSIST_VERSION = 3`; v1 → v2 folds `agents[]` + `preloaded` into per-agent load states, v2 → v3 adds `remembered` |
+| Concern    | Approach                                                                                                                         |
+| ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
+| Key        | `agents-inc:config:v1` / `agents-inc:ui:v1`                                                                                      |
+| Validation | `merge` → `safeParse`; on failure **return current** (silent reset, log in dev)                                                  |
+| Stale ids  | `pruneUnknownIds` drops skill/stack/agent ids absent from the regenerated catalog (pins included)                                |
+| Migration  | `PERSIST_VERSION = 5` (v5 adds `pins` + per-assignment `enabled`). Pre-release policy: no migrations — older blobs are discarded |
 
 ### URL search params — `/`
 
-| Param    | Zod                                              | Default | Note                                        |
-| -------- | ------------------------------------------------ | ------- | ------------------------------------------- |
-| `domain` | `z.enum(DOMAINS).nullable().catch(null)`         | `null`  | `null` renders every domain — the design's resting state |
-| `q`      | `z.string().trim().max(64).catch("")`            | `""`    |                                             |
-| `rec`    | `z.boolean().catch(false)`                       | `false` |                                             |
-| `sel`    | `z.boolean().catch(false)`                       | `false` | Narrow to what you have actually chosen     |
+| Param    | Zod                                      | Default | Note                                                     |
+| -------- | ---------------------------------------- | ------- | -------------------------------------------------------- |
+| `domain` | `z.enum(DOMAINS).nullable().catch(null)` | `null`  | `null` renders every domain — the design's resting state |
+| `q`      | `z.string().trim().max(64).catch("")`    | `""`    |                                                          |
+| `rec`    | `z.boolean().catch(false)`               | `false` |                                                          |
+| `sel`    | `z.boolean().catch(false)`               | `false` | Narrow to what you have actually chosen                  |
 
 ---
 
@@ -158,20 +175,20 @@ one is allowed because `toggleSkill`'s catalog guard widens to "catalog **or** s
 
 ### `packages/ui` — the design system
 
-| File                     | Provides                                                             |
-| ------------------------ | -------------------------------------------------------------------- |
-| `styles/globals.css`     | Tokens: surfaces, ink, amber, lines, `--spacing-gutter`, type scale   |
-| `lattice.tsx`            | `Lattice` / `LatticeCell` / `LatticeRows` / `LatticeRow` — rule 2      |
-| `badge.tsx`              | `state` (install/scope, `alt` = amber) · `tag` (`added`) · `outline` (`one of`) |
-| `chip.tsx`               | Bordered mono toggle at two sizes: `filter`, `segment`                |
-| `segmented.tsx`          | `Segmented` / `SegmentedItem` / `FieldLabel`                          |
-| `matrix-grid.tsx`        | Tri-state assignment matrix, tolerates gaps                           |
-| `divider.tsx`            | `Hinge` (labelled) / `Rule` — the page's only two rules               |
-| `button.tsx`             | `outline` · `primary` · `block` · `full`                              |
-| `input.tsx`              | Borderless mono field: `search`, `dialog`                             |
-| `command-block.tsx`      | `$`-prefixed shell command                                            |
-| `dialog.tsx`             | The shared square shell + panes                                       |
-| `alert-dialog.tsx`       | Confirm shell (stack switch)                                          |
+| File                 | Provides                                                                        |
+| -------------------- | ------------------------------------------------------------------------------- |
+| `styles/globals.css` | Tokens: surfaces, ink, amber, lines, `--spacing-gutter`, type scale             |
+| `lattice.tsx`        | `Lattice` / `LatticeCell` / `LatticeRows` / `LatticeRow` — rule 2               |
+| `badge.tsx`          | `state` (install/scope, `alt` = amber) · `tag` (`added`) · `outline` (`one of`) |
+| `chip.tsx`           | Bordered mono toggle at two sizes: `filter`, `segment`                          |
+| `segmented.tsx`      | `Segmented` / `SegmentedItem` / `FieldLabel`                                    |
+| `matrix-grid.tsx`    | Tri-state assignment matrix, tolerates gaps                                     |
+| `divider.tsx`        | `Hinge` (labelled) / `Rule` — the page's only two rules                         |
+| `button.tsx`         | `outline` · `primary` · `block` · `full`                                        |
+| `input.tsx`          | Borderless mono field: `search`, `dialog`                                       |
+| `command-block.tsx`  | `$`-prefixed shell command                                                      |
+| `dialog.tsx`         | The shared square shell + panes                                                 |
+| `alert-dialog.tsx`   | Confirm shell (stack switch)                                                    |
 
 **Removed in v5** (superseded, no consumers): `accordion`, `table`, `sliding-toggle-group`, `toggle`,
 `toggle-group`, `hover-card`, `input-group`, `scroll-area`, `separator`, `textarea`, `tooltip`,
@@ -179,22 +196,22 @@ one is allowed because `toggleSkill`'s catalog guard widens to "catalog **or** s
 
 ### `apps/web`
 
-| File                                | Renders                                                        |
-| ----------------------------------- | -------------------------------------------------------------- |
-| `routes/route-components.tsx`       | 3-column grid shell (152px / fluid / 260px)                     |
-| `components/nav-rail.tsx`           | Logo, words-only nav, GitHub mark                               |
-| `components/skill-icon.tsx`         | 26px logo slot: brand mark in `currentColor`, else monogram     |
-| `.../configure-screen.tsx`          | Hinges, stack grid, filter bar, domain sections, dialogs, scroll observer |
-| `.../stack-grid.tsx`                | 4-across stack lattice                                          |
-| `.../filter-bar.tsx`                | Sticky/stuck bar + chips + `＋ add skill`                        |
-| `.../domain-section.tsx`            | Sticky domain title + category groups + skill lattice           |
-| `.../skill-cell.tsx`                | The core cell                                                   |
-| `.../skill-options-panel.tsx`       | The `•••` popover                                               |
-| `.../roster-panel.tsx`              | Available / in-use sub-agents, stats, Install                   |
-| `.../install-dialog.tsx`            | Inventory panes + numbered steps                                |
-| `.../add-skill-dialog.tsx`          | Staged tray, GitHub search, result lattice                      |
-| `.../stack-switch-dialog.tsx`       | Confirm discard                                                 |
-| `lib/api/github-skills.ts`          | The one network call                                            |
+| File                          | Renders                                                                                                                                 |
+| ----------------------------- | --------------------------------------------------------------------------------------------------------------------------------------- |
+| `routes/route-components.tsx` | 3-column grid shell (152px / fluid / 260px)                                                                                             |
+| `components/nav-rail.tsx`     | Logo, words-only nav, GitHub mark                                                                                                       |
+| `components/skill-icon.tsx`   | 26px logo slot: brand mark in `currentColor`, else monogram                                                                             |
+| `.../configure-screen.tsx`    | Hinges, stack grid, filter bar, domain sections, dialogs, scroll observer                                                               |
+| `.../stack-grid.tsx`          | 4-across stack lattice                                                                                                                  |
+| `.../filter-bar.tsx`          | Sticky/stuck bar + chips + `＋ add skill`                                                                                               |
+| `.../domain-section.tsx`      | Sticky domain title + category groups + skill lattice                                                                                   |
+| `.../skill-cell.tsx`          | The core cell                                                                                                                           |
+| `.../skill-options-panel.tsx` | The `•••` popover                                                                                                                       |
+| `.../roster-panel.tsx`        | Domain accordions (stacking sticky bands), agent pins, per-agent skill rows with load words and the where-used tooltip, Share + Install |
+| `.../install-dialog.tsx`      | Inventory panes + numbered steps                                                                                                        |
+| `.../add-skill-dialog.tsx`    | Staged tray, GitHub search, result lattice                                                                                              |
+| `.../stack-switch-dialog.tsx` | Confirm discard                                                                                                                         |
+| `lib/api/github-skills.ts`    | The one network call                                                                                                                    |
 
 ---
 
@@ -221,12 +238,12 @@ out to touch both vertical dividers.
 
 Four layers, in order of preference. Nothing that could sit lower sits higher.
 
-| Layer | Holds | Files |
-| ----- | ----- | ----- |
+| Layer              | Holds                                                             | Files                                                                                                                                           |
+| ------------------ | ----------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------- |
 | **Pure functions** | Every derivation and transform. No React, independently testable. | `features/configure/lib/derive.ts`, `stores/persisted-schema.ts`, `lib/api/github-skills.ts`, the helpers exported from `added-skills-store.ts` |
-| **Stores** | Shared mutable state and the actions that write it. | `config-store`, `ui-store`, `added-skills-store` |
-| **Hooks** | Reusable *behaviour* — the only thing hooks are for here. | `lib/use-pinned.ts` |
-| **Components** | Composition and event wiring only. | everything in `features/configure/components/` |
+| **Stores**         | Shared mutable state and the actions that write it.               | `config-store`, `ui-store`, `added-skills-store`                                                                                                |
+| **Hooks**          | Reusable _behaviour_ — the only thing hooks are for here.         | `lib/use-pinned.ts`                                                                                                                             |
+| **Components**     | Composition and event wiring only.                                | everything in `features/configure/components/`                                                                                                  |
 
 Only three components hold a `useEffect` at all: the add-skill dialog (debounced search), the filter
 bar (publishing pinned state), and the skill cell (outside-press / Escape dismissal). Each is
@@ -245,7 +262,7 @@ sub-agent list reuses so the tri-state colours cannot drift from the matrix abov
 The **page** scrolls, not the middle column: both side columns are `sticky top-0 h-svh`, which is
 what makes their dividers read as continuous. `items-start` on the grid is what allows that.
 
-`use-pinned.ts` reports whether a sticky element is *currently* pinned — CSS has no selector for it.
+`use-pinned.ts` reports whether a sticky element is _currently_ pinned — CSS has no selector for it.
 It ships two forms, and which one to use is a performance decision, not a style one:
 
 - **`usePinned`** returns React state. Only for elements whose own markup changes — the filter bar.
@@ -278,13 +295,52 @@ transition is the **only** animation in the design.
 Where the catalog and the design disagree, the catalog wins — the design was drawn against a smaller
 snapshot of it.
 
-| # | Question               | Decision                                                                                             |
-| - | ---------------------- | ------------------------------------------------------------------------------------------------------ |
-| 1 | **Domain set**         | Render all catalog domains as sections; chip only the five the design shows.                          |
-| 2 | **Sub-agent taxonomy** | Real agents from the catalog (23, ragged), not the design's clean 4 × 4 of 16.                        |
-| 3 | **Domain hierarchy**   | Ship `hierarchy: b` — 25px Inter title + amber `skills` suffix. The README prose describes the base rule; the prototype's default and every screenshot are `b`. |
-| 4 | **Skill logos**        | Render the real mark where one exists, in `currentColor`; monogram otherwise.                         |
-| 5 | **Domain colours**     | **Removed.** v5 has one accent; nine coloured dots would break rule 4.                                 |
+| #   | Question               | Decision                                                                                                                                                        |
+| --- | ---------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 1   | **Domain set**         | Render all catalog domains as sections; chip only the five the design shows.                                                                                    |
+| 2   | **Sub-agent taxonomy** | Real agents from the catalog (23, ragged), not the design's clean 4 × 4 of 16.                                                                                  |
+| 3   | **Domain hierarchy**   | Ship `hierarchy: b` — 25px Inter title + amber `skills` suffix. The README prose describes the base rule; the prototype's default and every screenshot are `b`. |
+| 4   | **Skill logos**        | Render the real mark where one exists, in `currentColor`; monogram otherwise.                                                                                   |
+| 5   | **Domain colours**     | **Removed.** v5 has one accent; nine coloured dots would break rule 4.                                                                                          |
+
+### Incompatibility
+
+A skill is **out of reach** when the current selection makes it unusable, and the grid draws that by
+dimming it to 40% and setting `aria-disabled`, never by hiding it. `selectReachability` in
+`derive.ts` is the whole rule; it returns both what the selection has **reached** (chosen, plus what
+that necessarily brings with it) and what is consequently out.
+
+Where it comes from matters, because the obvious sources are both wrong:
+
+| Field            | Why it is not the answer                                                                                                            |
+| ---------------- | ----------------------------------------------------------------------------------------------------------------------------------- |
+| `conflictsWith`  | Never leaves its own category — React lists only Vue/Angular/Solid/Svelte. It cannot express React ↔ SvelteKit at all.              |
+| `compatibleWith` | Lists whole neighbourhoods rather than genuine pairings; it claims React **is** compatible with SvelteKit. Nothing derives from it. |
+| `requires`       | **The real source.** Authored per skill with a reason — "SvelteKit is built on Svelte", "Pinia is Vue only".                        |
+
+The rule runs in both directions, and needs both:
+
+- **Forward** — a skill whose requirements can no longer be met goes with them:
+  `SvelteKit → requires Svelte → conflicts with React`. Transitive (Pinia needs Vue _or_ Nuxt; Nuxt
+  needs Vue; Vue is gone), so it runs to a fixpoint rather than one hop. Picking React puts 14 skills
+  out of reach, only 4 of them by direct conflict.
+- **Backward** — what the selection implies counts as selected. Choosing Next.js is choosing React
+  whether or not React was clicked, so Angular, Vue, Svelte and SolidJS all go, even though Next.js
+  names none of them. Only unambiguous groups propagate: "needs Vue _or_ Nuxt" cannot name which, so
+  it implies neither.
+
+Two exemptions keep it from trapping the user:
+
+- **A selected skill is never disabled.** Clicking it off is the way out of a bad combination.
+- **An exclusive sibling is never disabled** for conflicting with something _actually selected_ in
+  its own category — picking one swaps rather than adds, so Vue stays live once React is chosen.
+  Two things are deliberately outside that exemption, because in neither case would the swap help:
+  a sibling whose own `requires` is unsatisfiable, and a sibling conflicting with a merely **implied**
+  skill — clicking Angular would not evict Next.js, so the invalid pair would survive.
+
+The cell keeps pointer events (it is `interactive={false}` + guarded handlers rather than
+`pointer-events-none`) so the reason can still be read on hover; `title` carries it, which is also
+the accessible description.
 
 ---
 
@@ -292,17 +348,22 @@ snapshot of it.
 
 Each of these is a place the design could not be followed literally, with the reason.
 
-| Area | Design | Built | Why |
-| ---- | ------ | ----- | --- |
-| **Sub-agent matrix** | 4 domains × 4 roles = 16 agents | 4 canonical role columns over the domains that have them, plus a labelled list for the 9 ragged agents | The catalog has 23 agents across 10 distinct roles. A full domain × role grid would be 6 × 10, mostly empty, in a 296px panel — and dropping the extras would make them unassignable. |
-| **`•••` on an unselected skill** | Panel opens | Selects the skill, then opens | Options only apply once a skill is selected, so the design's own rule makes this a dead click on every unselected cell — and the `•••` is drawn identically on all of them. Badge clicks behave the same way. |
-| **Agent count opens on hover** | "Hover/click" | Click only | A hover-opened panel containing interactive controls is hostile to reach. Click is listed in the design too. |
-| **Panel dismissal** | Click `•••` again | Also outside press and Escape | The design does not say, and a popover with no escape hatch is a trap. |
-| **Panel overflow** | Always opens to the right | Flips left in the last column | At `left: calc(100% + 5px)` a last-column panel escapes the main column. |
-| **Uncategorized added skills** | "lands in Uncategorized" — never mocked | Own trailing `Added` section | Appending to a real domain would imply membership of it. |
-| **Cell lattice** | Border + white background on the *grid container* | Border + background on each **cell**, pulled back 1px so shared edges coincide | Equivalent only while every row is full. The mock never shows a partial row; ours do constantly, and there the container approach paints white across the empty columns and runs a rule out past the last cell. |
-| **Domain chips** | Static markup, no behaviour | Toggle filter; active chip clears | Chips are hardcoded in the prototype; the README lists filter behaviour as a gap to fill. |
-| **Skill descriptions** | ~25 chars describing the *library* | The catalog's skill description | The catalog describes the skill, not the library. Needs new upstream data, not a UI change. |
+| Area                             | Design                                                                                                                                        | Built                                                                                               | Why                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
+| -------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **Sub-agent matrix**             | dev · pm · rev · test over Web/API/AI/CLI/Infra, `Meta ＋` folded beneath                                                                     | The same, and nothing else — verified against `screens/04-skill-panel.png`                          | The four ragged non-meta agents (web-architecture, web-pattern-critique, the two researchers) are deliberately **not** hand-assignable: the design draws INFRA straight into META, and the CLI is unifying every domain onto these four roles (`docs/subagents-todo.md`). They still take skills from a stack and still appear in the roster, where they can be switched off. Meta expands to its five agents — the design draws the row but leaves it static. |
+| **Matrix gap cells**             | A plain 5 × 4 field; slots with no agent (AI pm/test, CLI pm, Infra dev/pm/test) look identical to unassigned ones                            | The same, but inert — no pointer cursor, no click                                                   | Fidelity to `04-skill-panel.png`, which shows uniform cells. Marking them (the earlier dashed treatment) invented a distinction the design does not draw.                                                                                                                                                                                                                                                                                                      |
+| **Incompatible cell**            | `.skc.dis{opacity:.4}` — dimmed, and nothing else                                                                                             | The same 40% dim, plus `aria-disabled` and a reason on `title`                                      | The dimming matches the design exactly. What the design has no answer for is _why_ a cell is out, and that a mouse-only signal leaves the state unreadable to anything else — hence the reason and the ARIA state. A red outline was tried and pulled; see the todo.                                                                                                                                                                                           |
+| **Roster footer**                | A single Install button carrying the counts                                                                                                   | Share above Install                                                                                 | Sharing is a shipped feature (Cloudflare KV round trip) with no other surface yet; the design's SHARE nav destination is still an empty shell.                                                                                                                                                                                                                                                                                                                 |
+| **Where-used count/tooltip**     | Prototype counts every row of an installed agent — a switched-off row still appears in other rows' counts and lists (`offs` only recesses it) | Only enabled rows on on-agents count (`liveUsesBySkill`)                                            | The number answers "where else will this actually install"; counting a switched-off copy would contradict the install inventory and summary, which skip it too.                                                                                                                                                                                                                                                                                                |
+| **Model / effort segments**      | `opus · sonnet · haiku`, `none · low · med · high`                                                                                            | `opus · fable · sonnet · haiku`, `low · medium · high · xhigh · max · ultra` — no "off", full words | These are the CLI contract's scales (`packages/matrix/src/seed.ts`, cli-integration.md); the store adopted them at persist v4. Neither segment has an off state — `sonnet` / `medium` are the resting defaults.                                                                                                                                                                                                                                                |
+| **`•••` on an unselected skill** | Panel opens                                                                                                                                   | Panel opens, and the skill stays unselected                                                         | As the design has it. Configuring is not choosing: the `•••` and both badges never select. What they set on an unselected skill goes to `remembered` — the same place a deselected skill's setup goes — so it survives and `select` restores it verbatim. The panel shows `entry ?? remembered ?? freshEntry`, the same three fallbacks the store writes through, so it can never display one thing and save another.                                          |
+| **Agent count opens on hover**   | "Hover/click"                                                                                                                                 | Click only                                                                                          | A hover-opened panel containing interactive controls is hostile to reach. Click is listed in the design too.                                                                                                                                                                                                                                                                                                                                                   |
+| **Panel dismissal**              | Click `•••` again                                                                                                                             | Also outside press and Escape                                                                       | The design does not say, and a popover with no escape hatch is a trap.                                                                                                                                                                                                                                                                                                                                                                                         |
+| **Panel overflow**               | Always opens to the right                                                                                                                     | Flips left in the last column                                                                       | At `left: calc(100% + 5px)` a last-column panel escapes the main column.                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Uncategorized added skills**   | "lands in Uncategorized" — never mocked                                                                                                       | Own trailing `Added` section                                                                        | Appending to a real domain would imply membership of it.                                                                                                                                                                                                                                                                                                                                                                                                       |
+| **Cell lattice**                 | Border + white background on the _grid container_                                                                                             | Border + background on each **cell**, pulled back 1px so shared edges coincide                      | Equivalent only while every row is full. The mock never shows a partial row; ours do constantly, and there the container approach paints white across the empty columns and runs a rule out past the last cell.                                                                                                                                                                                                                                                |
+| **Domain chips**                 | Static markup, no behaviour                                                                                                                   | Toggle filter; active chip clears                                                                   | Chips are hardcoded in the prototype; the README lists filter behaviour as a gap to fill.                                                                                                                                                                                                                                                                                                                                                                      |
+| **Skill descriptions**           | ~25 chars describing the _library_                                                                                                            | The catalog's skill description                                                                     | The catalog describes the skill, not the library. Needs new upstream data, not a UI change.                                                                                                                                                                                                                                                                                                                                                                    |
 
 ---
 
@@ -310,10 +371,10 @@ Each of these is a place the design could not be followed literally, with the re
 
 Two layers, split by what each is good at.
 
-| Layer | Covers | Cost |
-| ----- | ------ | ---- |
-| **Unit** (`vitest`, 94 tests) | Pure logic: derivations, the persisted-schema boundary, the read model | ~20ms |
-| **E2E** (`playwright`, 88 tests) | Behaviour through a real browser: wiring, interaction, layout, persistence | ~16s |
+| Layer                            | Covers                                                                     | Cost  |
+| -------------------------------- | -------------------------------------------------------------------------- | ----- |
+| **Unit** (`vitest`, 94 tests)    | Pure logic: derivations, the persisted-schema boundary, the read model     | ~20ms |
+| **E2E** (`playwright`, 88 tests) | Behaviour through a real browser: wiring, interaction, layout, persistence | ~16s  |
 
 The split is not "units are better", it is **where a case is reachable**. Three things make a case
 belong in a unit test:
@@ -323,7 +384,7 @@ belong in a unit test:
   round-trip end-to-end and microseconds in-process.
 - **The path is a boundary against untrusted or legacy data.** `migrateConfig` and `pruneUnknownIds`
   read whatever localStorage happens to hold. This is the only place in the app where a bug is
-  *silent* — a broken migration does not throw, it quietly returns a configuration missing someone's
+  _silent_ — a broken migration does not throw, it quietly returns a configuration missing someone's
   afternoon of work. Reaching it end-to-end means hand-seeding a legacy blob and reloading.
 - **Failure needs localising.** An E2E failure says the roster shows the wrong count; a unit failure
   says `summarize` counted an assignment where it should have counted an agent.
@@ -339,11 +400,11 @@ naming the broken behaviour fail — see the tracker.
 
 ## 10. Deferred
 
-| Item                    | State                                                                        |
-| ----------------------- | ------------------------------------------------------------------------------ |
+| Item                    | State                                                                            |
+| ----------------------- | -------------------------------------------------------------------------------- |
 | Added-skill persistence | Session-only by explicit instruction. Needs a real marketplace entry to persist. |
-| GitHub proxy            | `apps/server`. Unauthenticated search is 10 req/min, hence the 350ms debounce.  |
-| Docs / Share / Settings | Route + centred heading only.                                                  |
-| Empty / loading / error | Only the filter's no-match line and the dialog's error line exist. Undesigned.  |
-| Responsive < 1324px     | Hard `min-w`; the page scrolls horizontally. Undesigned.                        |
-| Dark mode               | Undesigned. The `.dark` block was removed rather than left stale.               |
+| GitHub proxy            | `apps/server`. Unauthenticated search is 10 req/min, hence the 350ms debounce.   |
+| Docs / Share / Settings | Route + centred heading only.                                                    |
+| Empty / loading / error | Only the filter's no-match line and the dialog's error line exist. Undesigned.   |
+| Responsive < 1324px     | Hard `min-w`; the page scrolls horizontally. Undesigned.                         |
+| Dark mode               | Undesigned. The `.dark` block was removed rather than left stale.                |

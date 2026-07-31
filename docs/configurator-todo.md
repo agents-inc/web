@@ -15,6 +15,56 @@ Mark items `[x]` as they land.
 | 4 | **Added skills are session-only** | By explicit instruction. Persisting means giving them real catalog entries — a marketplace concern. |
 | 5 | **Config sharing undecided** | Blocks the Share destination. URL-encoded needs no backend; a hosted id does. |
 | 6 | **Skill descriptions describe the skill, not the library** | The design wants ~25 chars about the library ("JavaScript UI library"). Needs upstream catalog data. |
+| 7 | **Half the catalogue states no relationships at all** — see below | 123 of 222 skills are invisible to the incompatibility rule, and the data cannot say whether that is correct. Needs upstream authoring. |
+
+### 7 · Every skill should carry conflicts, or trace to one that does
+
+The invariant worth holding: a skill either states its own `conflictsWith`, or reaches one that does
+by following `requires`. Today, of 222 skills — 80 carry their own conflicts, 19 trace to one, and
+**123 do neither**, which makes them invisible to the incompatibility rule.
+
+Most of those 123 are legitimately unconstrained: Zod, Tailwind and GitHub Actions really do work
+with anything. The problem is that **the data cannot tell "genuinely universal" from "nobody has
+audited this yet"** — both read as two empty arrays. So the ask is not to author 123 conflict lists;
+it is to make that distinction explicit, so an empty pair means *audited and universal*.
+
+Worth starting with `web` (26 of the 123) and `mobile` (22): a framework-bound skill that forgot to
+declare `requires` is invisible to the rule below, so it stays clickable beside a framework it cannot
+run on and nothing anywhere says so.
+
+Seven of the orphans also sit in **exclusive** categories (PlanetScale, Turso, Gel (EdgeDB),
+SurrealDB, Email Setup, pnpm Workspaces, Server-Sent Events). Those are not bugs — the pick-one swap
+already covers a category's own members — but they are a useful check that the category, rather than
+the conflict list, is what is doing that work.
+
+Blocked on the CLI repo reopening; the audit itself runs against the vendored copy any time.
+
+## Incompatibility ✅ (2026-07-30)
+
+Selecting a skill now rules out what it makes unusable: dimmed to 40% with `aria-disabled`, never
+hidden. `selectReachability` in `derive.ts` is the whole rule, and it reads
+`requires` — the only field that can express a cross-category incompatibility, since `conflictsWith`
+never leaves its own category and `compatibleWith` claims React is compatible with SvelteKit.
+
+- [x] **Forward** — a skill whose requirements can no longer be met goes with them. Transitive, so
+      picking React takes SvelteKit (needs Svelte), then Nuxt (needs Vue), then Pinia (needs Vue or
+      Nuxt): 14 skills, only 4 of them by direct conflict.
+- [x] **Backward** — what the selection implies counts as selected. Next.js is built on React, so
+      choosing it rules out Angular, Vue, Svelte and SolidJS even though Next.js names none of them.
+      Only unambiguous groups propagate; "needs Vue or Nuxt" implies neither.
+- [x] Two exemptions keep it from trapping the user: a **selected** skill is never disabled, and an
+      exclusive sibling is never disabled for conflicting with something **actually selected** in its
+      own category — that is the swap. The exemption deliberately does *not* extend to an implied
+      conflict, because clicking the sibling would not evict whatever implies it.
+- [x] Reason strings come from the data: `Conflicts with React`, `Needs Svelte`, `Needs one of Vue,
+      Nuxt`. Carried on `title`, which is also the accessible description — so the cell keeps pointer
+      events rather than `pointer-events-none`, or the reason would be unreachable.
+- [x] 19 unit tests over the derivation, 12 E2E over the drawing and the disabling, and a fixture
+      guard in `catalog.spec.ts` so a future re-authoring of the requirement chain fails once, named.
+- Parked: a red outline (`#b0392c`, the amber hue rotated) was built and pulled — dimming alone is
+  the design's own treatment, and red would have been the language's only non-amber signal. If it
+  comes back it belongs on the `disabled` variant in `packages/ui/lattice.tsx`, with the token
+  restored beside `--color-brand-*`.
 
 ## v5 redesign ✅
 
