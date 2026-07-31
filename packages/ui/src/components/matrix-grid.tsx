@@ -32,8 +32,9 @@ type MatrixRow = {
   key: string
   label: string
   // One entry per column. `null` means no sub-agent exists for that
-  // domain × role pair — the slot stays in the grid to keep columns aligned,
-  // but renders inert.
+  // domain × role pair. The design draws those exactly like an unassigned
+  // cell — the grid reads as a plain 5 × 4 field — so the slot is only
+  // distinguished by being inert.
   cells: (MatrixCell | null)[]
 }
 
@@ -89,7 +90,10 @@ function MatrixGrid({
               <span
                 key={`${row.key}-gap-${columns[column]}`}
                 aria-hidden
-                className="h-5 border border-dashed border-divider/60"
+                className={cn(
+                  matrixCellVariants({ state: "empty" }),
+                  "cursor-default"
+                )}
               />
             )
           )}

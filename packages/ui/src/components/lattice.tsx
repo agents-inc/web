@@ -48,9 +48,14 @@ const latticeCellVariants = cva(
         true: "z-1 outline-1 -outline-offset-1 outline-brand",
         false: "",
       },
-      // Incompatible skills are shown but disabled — never hidden.
+      // Incompatible skills are shown but disabled — never hidden. Dimming is
+      // the whole signal, as in the design.
+      //
+      // Deliberately not `pointer-events-none`: the cell has to stay hoverable
+      // or the tooltip explaining *why* it is out never opens. Callers pass
+      // `interactive={false}` and guard their own handlers instead.
       disabled: {
-        true: "pointer-events-none opacity-40",
+        true: "cursor-default opacity-40",
         false: "",
       },
       // Clipped so a long name cannot bleed across a hairline, except when
