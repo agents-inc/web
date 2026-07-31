@@ -10,11 +10,17 @@
         "$TURBO_DEFAULT$",
         ".env*"
       ],
-      // VITE_API_URL is inlined into the bundle, so it is part of the build's
-      // identity — without it here, a cached build from another environment
-      // would be replayed with the wrong API baked in.
+      // These are inlined into the bundle or decide what it contains, so they
+      // are part of the build's identity — without them here, a cached build
+      // from another environment would be replayed with the wrong API baked
+      // in, or with source maps silently not uploaded. turbo hashes the
+      // values rather than storing them, so a token is safe to name.
       "env": [
-        "VITE_API_URL"
+        "VITE_API_URL",
+        "VITE_SENTRY_DSN",
+        "SENTRY_AUTH_TOKEN",
+        "SENTRY_ORG",
+        "SENTRY_PROJECT"
       ],
       "outputs": [
         "dist/**"

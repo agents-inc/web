@@ -48,6 +48,7 @@ const createConfigRoute = createRoute({
     },
     400: { description: "Body is not a valid seed payload" },
     413: { description: "Body exceeds the size cap" },
+    503: { description: "The store refused the write" },
   },
 })
 
@@ -63,6 +64,7 @@ const getConfigRoute = createRoute({
       content: { "application/json": { schema: seedPayloadSchema } },
     },
     404: { description: "No config under this id" },
+    503: { description: "The store refused the read" },
   },
 })
 
@@ -88,6 +90,18 @@ app.use("/configs", async (c, next) => {
   return next()
 })
 
+// Workers Logs is already enabled in wrangler.jsonc, and it ingests a logged
+// object as structured fields — so this is queryable in the dashboard without
+// an SDK, a dependency or a second vendor. A KV write is the one thing here
+// that can fail for reasons outside this code: the free tier allows 1000 a
+// day, and past that a share fails with nothing anywhere saying why.
+const logKvFailure = (operation: string, error: unknown) =>
+  console.error({
+    event: "kv_failure",
+    operation,
+    message: error instanceof Error ? error.message : String(error),
+  })
+
 app.openapi(createConfigRoute, async (c) => {
   const payload = c.req.valid("json")
 
@@ -95,7 +109,13 @@ app.openapi(createConfigRoute, async (c) => {
   // are already stripped and the hash covers exactly what a GET returns.
   const body = JSON.stringify(payload)
   const id = await contentAddress(body)
-  await c.env.CONFIGS.put(id, body)
+
+  try {
+    await c.env.CONFIGS.put(id, body)
+  } catch (error) {
+    logKvFailure("put", error)
+    return c.text("Could not store this config", 503)
+  }
 
   return c.json({ id }, 201)
 })
@@ -103,7 +123,14 @@ app.openapi(createConfigRoute, async (c) => {
 app.openapi(getConfigRoute, async (c) => {
   const { id } = c.req.valid("param")
 
-  const stored = await c.env.CONFIGS.get(id)
+  let stored: string | null
+  try {
+    stored = await c.env.CONFIGS.get(id)
+  } catch (error) {
+    logKvFailure("get", error)
+    return c.text("Could not read this config", 503)
+  }
+
   if (stored === null) return c.text("No config under this id", 404)
 
   // Content-addressed, therefore immutable: a CLI or proxy may cache forever.

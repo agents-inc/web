@@ -8,6 +8,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import { defaultAssignmentsFor } from "@/features/configure/lib/default-assignments"
+import { reportIssue } from "@/lib/observability/report"
 import { useAddedSkillsStore } from "./added-skills-store"
 import {
   DEFAULT_SKILL_OPTIONS,
@@ -76,6 +77,39 @@ const partition = <T>(items: readonly T[], matches: (item: T) => boolean) => {
   }
 
   return [matched, rest] as const
+}
+
+// `pruneUnknownIds` dropping an id is correct and completely invisible: the
+// user gets a smaller configuration back and no explanation. Counting the
+// difference is what turns catalog drift into something observable, without
+// changing the pure function or the tests that cover it.
+const countIds = (config: PersistedConfig) => {
+  const entries = [
+    ...Object.values(config.skills),
+    ...Object.values(config.remembered),
+  ]
+
+  return (
+    entries.length +
+    Object.keys(config.pins).length +
+    entries.reduce(
+      (total, entry) => total + Object.keys(entry?.assignments ?? {}).length,
+      0
+    )
+  )
+}
+
+const reportPruning = (before: PersistedConfig, after: PersistedConfig) => {
+  const droppedIds = countIds(before) - countIds(after)
+  const droppedStack = before.stackId !== null && after.stackId === null
+
+  if (droppedIds === 0 && !droppedStack) return
+
+  // Catalog slugs and counts — nothing here describes the user.
+  reportIssue("Pruned saved ids the catalog no longer knows", {
+    droppedIds,
+    droppedStackId: droppedStack ? before.stackId : undefined,
+  })
 }
 
 // ── Catalog questions ────────────────────────────────────────────────────
@@ -381,16 +415,22 @@ export const useConfigStore = create<ConfigState>()(
       merge: (persisted, current) => {
         const parsed = persistedConfigSchema.safeParse(persisted)
         if (!parsed.success) {
-          if (import.meta.env.DEV) {
-            console.warn(
-              "Discarding unreadable saved configuration",
-              parsed.error.issues
-            )
-          }
+          // The app's only *silent* failure: an afternoon of configuration
+          // becomes empty state, and nothing on screen says so. Paths and
+          // codes only — the issues must never carry the values themselves.
+          reportIssue("Discarded unreadable saved configuration", {
+            persistVersion: PERSIST_VERSION,
+            issues: parsed.error.issues.map(
+              (issue) => `${issue.path.join(".") || "(root)"}: ${issue.code}`
+            ),
+          })
           return current
         }
 
-        return { ...current, ...pruneUnknownIds(parsed.data) }
+        const pruned = pruneUnknownIds(parsed.data)
+        reportPruning(parsed.data, pruned)
+
+        return { ...current, ...pruned }
       },
     }
   )

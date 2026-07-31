@@ -1,5 +1,7 @@
 import { z } from "zod"
 
+import { reportIssue } from "@/lib/observability/report"
+
 // The one network call in the app. GitHub's search endpoint is CORS-enabled
 // and works unauthenticated, so release one talks to it directly from the
 // browser; the rate limit is 10 requests/minute, which is why the dialog
@@ -86,6 +88,8 @@ const isAbort = (error: unknown) =>
   error instanceof DOMException && error.name === "AbortError"
 
 const toSearchResult = async (response: Response): Promise<SearchResult> => {
+  // Rate limiting is the expected cost of searching unauthenticated at 10
+  // req/min, not a fault. Reporting it would drown the real failures.
   if (RATE_LIMITED.includes(response.status)) {
     return {
       ok: false,
@@ -93,11 +97,15 @@ const toSearchResult = async (response: Response): Promise<SearchResult> => {
     }
   }
   if (!response.ok) {
+    reportIssue("GitHub search failed", { status: response.status })
     return { ok: false, error: `GitHub search failed (${response.status}).` }
   }
 
   const parsed = githubSearchSchema.safeParse(await response.json())
   if (!parsed.success) {
+    // Only reachable if GitHub changes the search response shape, which is
+    // exactly the kind of thing worth learning about before users report it.
+    reportIssue("GitHub search returned an unexpected shape")
     return { ok: false, error: "GitHub returned an unexpected response." }
   }
 
@@ -120,6 +128,8 @@ export const searchSkillRepos = async (
   } catch (error) {
     // An abort is the caller replacing this search, not a failure.
     if (isAbort(error)) return { ok: true, repos: [] }
+
+    reportIssue("GitHub search could not be reached")
     return { ok: false, error: "Could not reach GitHub." }
   }
 }

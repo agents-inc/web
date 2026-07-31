@@ -1,4 +1,5 @@
 import path from "path"
+import { sentryVitePlugin } from "@sentry/vite-plugin"
 import tailwindcss from "@tailwindcss/vite"
 import react from "@vitejs/plugin-react"
 import { defineConfig, loadEnv } from "vite"
@@ -12,8 +13,41 @@ export default defineConfig(({ mode }) => {
   // in Node before anything is emitted, turns that into a failed build.
   parseEnv(loadEnv(mode, __dirname, "VITE_"), mode === "production")
 
+  // Source maps and their upload are one decision, not two. Everything under
+  // `dist/` is served publicly by the assets Worker, so a `.map` left behind
+  // publishes the whole source — and `hidden` only drops the reference
+  // comment, it still writes the file. Generating them *only* when the plugin
+  // is there to upload and then delete them means there is no arrangement in
+  // which a map survives into the deployment.
+  const uploadSourceMaps =
+    mode === "production" && Boolean(process.env.SENTRY_AUTH_TOKEN)
+
   return {
-    plugins: [react(), tailwindcss()],
+    plugins: [
+      react(),
+      tailwindcss(),
+      ...(uploadSourceMaps
+        ? [
+            sentryVitePlugin({
+              org: process.env.SENTRY_ORG,
+              project: process.env.SENTRY_PROJECT,
+              authToken: process.env.SENTRY_AUTH_TOKEN,
+              sourcemaps: { filesToDeleteAfterUpload: ["./dist/**/*.map"] },
+              // A rejected upload — wrong token scope, Sentry unreachable —
+              // must not stop the site shipping. The deploy is the important
+              // half; readable stack traces are the nice half. It stays loud
+              // in the CI log rather than failing the run.
+              errorHandler: (error) => {
+                console.warn(
+                  "[sentry] source map upload failed — deploying without them\n",
+                  error
+                )
+              },
+            }),
+          ]
+        : []),
+    ],
+    build: { sourcemap: uploadSourceMaps ? "hidden" : false },
     resolve: {
       alias: {
         "@": path.resolve(__dirname, "./src"),

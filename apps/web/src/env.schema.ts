@@ -10,6 +10,19 @@ export const envSchema = z.object({
   // build that omitted this would ship pointing at localhost, and every share
   // would fail with a message that reads like an outage rather than a typo.
   VITE_API_URL: z.url(),
+
+  // Optional on purpose, and optional in production too. Error reporting that
+  // refuses to build is worse than error reporting that is switched off, so an
+  // absent DSN disables Sentry rather than failing the deploy.
+  //
+  // Empty is folded into absent because that is what "not configured" actually
+  // looks like in CI: GitHub substitutes an unset secret with an empty string,
+  // so without this the build would fail on the very case the field is
+  // optional for.
+  VITE_SENTRY_DSN: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.url().optional()
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>
