@@ -1,0 +1,20 @@
+// The SPA host. There is deliberately no `main`: a Worker serving only static
+// assets needs no script, and asset requests are then unmetered — the UI costs
+// nothing against the request budget, only the API does.
+{
+  "$schema": "../../node_modules/wrangler/config-schema.json",
+  "name": "agents-inc-web",
+  "compatibility_date": "2025-10-01",
+  "assets": {
+    "directory": "./dist",
+    // TanStack Router owns every path below the root, so an unmatched request
+    // is a client-side route rather than a 404 — without this, a hard refresh
+    // on anything but `/` fails.
+    "not_found_handling": "single-page-application"
+  },
+  // Apex only. `location.origin` is baked into every share link
+  // (`use-share-link.ts`), so a second live hostname would mint links under
+  // whichever one the author happened to be on; www is a redirect rule in the
+  // dashboard instead, which resolves before the Worker is reached.
+  "routes": [{ "pattern": "agentsinc.sh", "custom_domain": true }]
+}

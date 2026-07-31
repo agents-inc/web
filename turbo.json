@@ -10,9 +10,21 @@
         "$TURBO_DEFAULT$",
         ".env*"
       ],
+      // VITE_API_URL is inlined into the bundle, so it is part of the build's
+      // identity — without it here, a cached build from another environment
+      // would be replayed with the wrong API baked in.
+      "env": [
+        "VITE_API_URL"
+      ],
       "outputs": [
         "dist/**"
       ]
+    },
+    "deploy": {
+      "dependsOn": [
+        "build"
+      ],
+      "cache": false
     },
     "lint": {
       "dependsOn": [
