@@ -50,10 +50,10 @@ test.describe("skill selection", () => {
     await expect(second.root).toHaveAttribute("aria-pressed", "true")
   })
 
-  test("selecting is reflected in the roster summary", async ({
+  test("selecting is reflected in the install counts", async ({
     configure,
   }) => {
-    await expect(configure.roster.summary).toContainText("0 skills")
+    await expect(configure.roster.installButton).toContainText("0 skills")
 
     await configure
       .skill(
@@ -62,6 +62,6 @@ test.describe("skill selection", () => {
       )
       .toggle()
 
-    await expect(configure.roster.summary).toContainText("1 skills")
+    await expect(configure.roster.installButton).toContainText("1 skill")
   })
 })

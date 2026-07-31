@@ -22,6 +22,7 @@ export function ConfigureScreen() {
   const navigate = route.useNavigate()
   const skills = useConfigStore((state) => state.skills)
   const stackId = useConfigStore((state) => state.stackId)
+  const pins = useConfigStore((state) => state.pins)
   const added = useAddedSkillsStore((state) => state.added)
 
   const clearFromId = useCallback(
@@ -34,7 +35,10 @@ export function ConfigureScreen() {
   )
   const importError = useSharedImport(search.fromId, clearFromId)
 
-  const config = useMemo(() => ({ stackId, skills }), [stackId, skills])
+  const config = useMemo(
+    () => ({ stackId, skills, pins }),
+    [stackId, skills, pins]
+  )
   const domainViews = useMemo(
     () => selectDomainViews(config, added, search),
     [config, added, search]

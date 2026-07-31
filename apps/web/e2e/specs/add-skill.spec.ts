@@ -112,7 +112,7 @@ test.describe("add skill dialog", () => {
     await added.toggle()
 
     await expect(added.root).toHaveAttribute("aria-pressed", "true")
-    await expect(configure.roster.summary).toContainText("1 skills")
+    await expect(configure.roster.installButton).toContainText("1 skill")
   })
 
   test("cancelling adds nothing", async ({ configure }) => {

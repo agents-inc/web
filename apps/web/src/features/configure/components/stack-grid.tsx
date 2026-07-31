@@ -45,12 +45,13 @@ const stackCells: StackCell[] = [
 export function StackGrid() {
   const stackId = useConfigStore((state) => state.stackId)
   const skills = useConfigStore((state) => state.skills)
+  const pins = useConfigStore((state) => state.pins)
   const applyStack = useConfigStore((state) => state.applyStack)
   const requestStack = useUiStore((state) => state.requestStack)
 
   const edited = useMemo(
-    () => isStackCustom({ stackId, skills }),
-    [stackId, skills]
+    () => isStackCustom({ stackId, skills, pins }),
+    [stackId, skills, pins]
   )
 
   const choose = (id: string | null) => {

@@ -13,7 +13,7 @@ import {
 } from "../support/github"
 
 const { web } = DOMAINS
-const { name: CATEGORY } = EXCLUSIVE_CATEGORY
+const { name: CATEGORY, first: REACT } = EXCLUSIVE_CATEGORY
 const CONFIG_KEY = "agents-inc:config:v1"
 const [FIRST] = SEARCH_RESULTS
 const ADDED_SKILL = repoSkillName(FIRST!.full_name)
@@ -35,6 +35,30 @@ test.describe("persistence", () => {
     ).toHaveAccessibleName("Install mode: eject")
   })
 
+  // The two v5 surfaces — a row switched off and an explicit pin — must
+  // rebuild exactly from rehydrated state, not re-derive from the rule.
+  test("pins and switched-off rows survive a reload", async ({
+    configure,
+    page,
+  }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    await configure.roster.skillRow(REACT, "web-developer").click()
+    await configure.roster.agentButton("api", "developer").click()
+
+    await page.reload()
+    await configure.stacks.waitFor()
+
+    const row = configure.roster.skillRow(REACT, "web-developer")
+    await expect(row).toBeVisible()
+    await expect(row).toHaveAttribute("aria-pressed", "false")
+    await expect(
+      configure.roster.agentButton("api", "developer")
+    ).toHaveAttribute("aria-pressed", "true")
+    await expect(configure.roster.installButton).toContainText(
+      "4 sub-agents and 1 skill"
+    )
+  })
+
   // Corrupt storage must reset to empty rather than take the app down.
   test("unreadable storage falls back to an empty configuration", async ({
     configure,
@@ -53,7 +77,7 @@ test.describe("persistence", () => {
       "aria-pressed",
       "true"
     )
-    await expect(configure.roster.summary).toContainText("0 skills")
+    await expect(configure.roster.installButton).toContainText("0 skills")
   })
 })
 

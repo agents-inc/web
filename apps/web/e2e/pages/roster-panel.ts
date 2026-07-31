@@ -1,40 +1,74 @@
 import type { Locator, Page } from "@playwright/test"
 
-// The right column. Everything here is derived from `assignments`, so it is
-// the natural place to assert that a change in the grid propagated.
+// The right column: domain accordions, agents with their assignments inline,
+// and the footer pair of buttons. Everything is derived from `assignments` +
+// `pins`, so it is the natural place to assert that a change in the grid
+// propagated.
 export class RosterPanel {
   readonly root: Locator
-  readonly summary: Locator
+  readonly heading: Locator
   readonly installButton: Locator
   readonly shareButton: Locator
-  readonly availableSection: Locator
-  readonly inUseSection: Locator
 
-  constructor(page: Page) {
+  constructor(private page: Page) {
     this.root = page.getByRole("complementary")
-    this.summary = this.root.locator("p").last()
-    this.installButton = this.root.getByRole("button", { name: "Install" })
+    this.heading = this.root.getByText("Sub-agents", { exact: true })
+    // Its label carries the counts — `Install 4 sub-agents and 1 skill` — so
+    // specs assert the numbers on the button itself.
+    this.installButton = this.root.getByRole("button", { name: /^Install / })
     // Its accessible name narrates the share lifecycle ("Share", "Link
     // copied", …), so specs asserting an outcome locate it by that state.
     this.shareButton = this.root.getByRole("button", { name: "Share" })
-    this.availableSection = this.root.getByRole("button", {
-      name: /Available sub-agents/,
+  }
+
+  // The sticky band, named by its whole text: "web 4 of 7".
+  domainBand(domainId: string): Locator {
+    return this.root.getByRole("button", {
+      name: new RegExp(`^${domainId} \\d+ of \\d+$`),
     })
-    this.inUseSection = this.root.getByRole("button", {
-      name: /In use sub-agents/,
+  }
+
+  domainSection(domainId: string): Locator {
+    return this.root.locator("section").filter({
+      has: this.page.getByRole("button", {
+        name: new RegExp(`^${domainId} \\d+ of \\d+$`),
+      }),
     })
   }
 
-  // A skill line under an in-use sub-agent, with its load state beside it.
-  skillLine(skillName: string): Locator {
-    return this.root.locator("div").filter({ hasText: skillName }).last()
+  // The agent's own row — colour-only state, exposed as `aria-pressed`.
+  agentButton(domainId: string, role: string): Locator {
+    return this.domainSection(domainId).getByRole("button", {
+      name: role,
+      exact: true,
+    })
   }
 
-  async toggleAvailable() {
-    await this.availableSection.click()
+  // One assignment line under one agent, e.g. "React on web-developer".
+  skillRow(skillName: string, agentId: string): Locator {
+    return this.root.getByRole("button", {
+      name: `${skillName} on ${agentId}`,
+    })
   }
 
-  async toggleInUse() {
-    await this.inUseSection.click()
+  // The row's `pre` / `lazy` word; its accessible name carries the full state.
+  loadWord(skillName: string, agentId: string): Locator {
+    return this.skillRow(skillName, agentId).getByRole("button", {
+      name: /^Load mode:/,
+    })
+  }
+
+  whereUsed(skillName: string, agentId: string): Locator {
+    return this.skillRow(skillName, agentId).getByRole("button", {
+      name: /^Used by /,
+    })
+  }
+
+  get whereUsedTip(): Locator {
+    return this.page.getByRole("tooltip")
+  }
+
+  async toggleDomain(domainId: string) {
+    await this.domainBand(domainId).click()
   }
 }

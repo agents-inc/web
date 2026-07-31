@@ -7,7 +7,7 @@ import {
 } from "../support/catalog"
 
 const { web } = DOMAINS
-const { name: CATEGORY } = EXCLUSIVE_CATEGORY
+const { name: CATEGORY, first: REACT } = EXCLUSIVE_CATEGORY
 
 test.describe("install dialog", () => {
   test.beforeEach(async ({ configure }) => {
@@ -55,6 +55,37 @@ test.describe("install dialog", () => {
   test("closes on Escape", async ({ configure, page }) => {
     await page.keyboard.press("Escape")
     await expect(configure.installDialog.root).toBeHidden()
+  })
+})
+
+// The agents pane follows the derived on/off state, pins included.
+test.describe("install dialog with pins", () => {
+  test("a pinned bare agent is listed as a base agent", async ({
+    configure,
+  }) => {
+    await configure.roster.agentButton("web", "developer").click()
+    await configure.roster.installButton.click()
+
+    await expect(configure.installDialog.agentsPane).toContainText(
+      "web · developer"
+    )
+    await expect(configure.installDialog.agentsPane).toContainText(
+      "no skills — base agent"
+    )
+  })
+
+  test("a pinned-off agent is excluded from the agents pane", async ({
+    configure,
+  }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    await configure.roster.agentButton("web", "developer").click()
+    await configure.roster.installButton.click()
+
+    // The positive assertion guards the negative one against a blank pane.
+    await expect(configure.installDialog.agentsPane).toContainText("reviewer")
+    await expect(configure.installDialog.agentsPane).not.toContainText(
+      "developer"
+    )
   })
 })
 

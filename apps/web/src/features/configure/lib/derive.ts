@@ -8,6 +8,7 @@ import {
   type CatalogCategory,
   type CatalogDomain,
   type CatalogSkill,
+  type SkillRequirement,
   type SubAgent,
 } from "@workspace/matrix"
 
@@ -15,6 +16,7 @@ import type { ConfigureSearch } from "@/routes/search"
 import type { AddedSkill } from "@/stores/added-skills-store"
 import {
   DEFAULT_SKILL_OPTIONS,
+  isAgentOn,
   type LoadState,
   type PersistedConfig,
   type SkillEntry,
@@ -22,7 +24,10 @@ import {
 
 // The selection and nothing else. Narrower than `PersistedConfig` on purpose:
 // a remembered skill is not selected, so no derivation may see one.
-export type ConfigSelection = Pick<PersistedConfig, "stackId" | "skills">
+export type ConfigSelection = Pick<
+  PersistedConfig,
+  "stackId" | "skills" | "pins"
+>
 
 // Catalog and session-added skills flattened to one shape, so the cell never
 // branches on provenance — only on `added`, which draws the tag.
@@ -40,7 +45,8 @@ export type SkillCellView = {
   skill: GridSkill
   entry: SkillEntry | undefined
   selected: boolean
-  // Conflicts with something already selected — rendered disabled, never hidden.
+  // Ruled out by the current selection, directly or through what it implies —
+  // rendered disabled, never hidden.
   incompatible: boolean
   incompatibleReason?: string
   agentCount: number
@@ -106,29 +112,173 @@ const isExclusiveSibling = (conflictId: string, category: CatalogCategory) =>
   CATALOG.skillsById[conflictId]?.categoryId === category.id
 
 // Conflicts are stored on both sides, so one direction is enough.
+//
+// Which conflicts count depends on *how* the other skill got there. A conflict
+// with something the user actually selected is forgiven inside an exclusive
+// category, because clicking this cell would swap the two. A conflict with
+// something merely *implied* is not: no swap inside this category can remove
+// whatever is implying it, so the invalid pair would survive the click.
 const findConflict = (
   skill: CatalogSkill,
   category: CatalogCategory,
-  selectedIds: Set<string>
+  selectedIds: Set<string>,
+  reachedIds: Set<string>
 ) =>
-  skill.conflictsWith.find(
-    (conflictId) =>
-      selectedIds.has(conflictId) && !isExclusiveSibling(conflictId, category)
+  skill.conflictsWith.find((conflictId) =>
+    selectedIds.has(conflictId)
+      ? !isExclusiveSibling(conflictId, category)
+      : reachedIds.has(conflictId)
+  )
+
+// ── Reachability ─────────────────────────────────────────────────────────
+
+export type Reachability = {
+  // Selected, plus everything the selection necessarily brings with it.
+  reached: Set<string>
+  // Ruled out by that.
+  outOfReach: Set<string>
+}
+
+const allSkills = () => Object.values(CATALOG.skillsById)
+
+// A group offering a choice commits the user to none of the options: "Pinia
+// needs Vue *or* Nuxt" cannot say which, so it implies neither.
+const isAmbiguous = (requirement: SkillRequirement) =>
+  requirement.needsAny && requirement.skillIds.length > 1
+
+// What choosing this skill necessarily also chooses.
+const directlyImpliedBy = (skillId: string) =>
+  (CATALOG.skillsById[skillId]?.requires ?? [])
+    .filter((requirement) => !isAmbiguous(requirement))
+    .flatMap((requirement) => requirement.skillIds)
+
+// What the selection drags in behind it. Choosing Next.js is choosing React
+// whether or not React was ever clicked, so a conflict with React is a
+// conflict with the selection — this is the half that catches Angular.
+const withImplied = (selectedIds: Set<string>) => {
+  const reached = new Set(selectedIds)
+
+  for (let settled = false; !settled;) {
+    settled = true
+
+    for (const skillId of [...reached]) {
+      for (const required of directlyImpliedBy(skillId)) {
+        if (reached.has(required)) continue
+        reached.add(required)
+        settled = false
+      }
+    }
+  }
+
+  return reached
+}
+
+const conflictsWithAny = (skill: CatalogSkill, reachedIds: Set<string>) =>
+  skill.conflictsWith.some((conflictId) => reachedIds.has(conflictId))
+
+// A group is met while any candidate is still reachable — for `needsAny`,
+// one is enough; otherwise every candidate has to survive.
+const isUnmet = (
+  requirement: SkillRequirement,
+  reachedIds: Set<string>,
+  outOfReach: Set<string>
+) => {
+  const lost = (skillId: string) =>
+    !reachedIds.has(skillId) && outOfReach.has(skillId)
+
+  return requirement.needsAny
+    ? requirement.skillIds.every(lost)
+    : requirement.skillIds.some(lost)
+}
+
+// The first way in: something reached conflicts with it outright — Svelte,
+// once React is on, and equally once Next.js is on, since that implies React.
+const conflictingWith = (reachedIds: Set<string>) =>
+  new Set(
+    allSkills()
+      .filter(
+        (skill) =>
+          !reachedIds.has(skill.id) && conflictsWithAny(skill, reachedIds)
+      )
+      .map((skill) => skill.id)
+  )
+
+// The second way in: losing a skill loses whatever was built on it, and so on
+// — Vue goes, then Nuxt, then Pinia. Each round can strand more than the last,
+// so this runs to a fixpoint. It terminates because a round either adds at
+// least one skill or stops, and there are finitely many.
+const withDependents = (reachedIds: Set<string>, seed: Set<string>) => {
+  const outOfReach = new Set(seed)
+
+  for (let settled = false; !settled;) {
+    settled = true
+
+    for (const skill of allSkills()) {
+      if (reachedIds.has(skill.id) || outOfReach.has(skill.id)) continue
+      if (
+        skill.requires.some((requirement) =>
+          isUnmet(requirement, reachedIds, outOfReach)
+        )
+      ) {
+        outOfReach.add(skill.id)
+        settled = false
+      }
+    }
+  }
+
+  return outOfReach
+}
+
+// Which skills the current selection has put out of reach. `requires` is the
+// *only* place a cross-category incompatibility can be read: `conflictsWith`
+// never leaves its own category, and `compatibleWith` is too noisy to trust.
+export const selectReachability = (selectedIds: Set<string>): Reachability => {
+  const reached = withImplied(selectedIds)
+
+  return {
+    reached,
+    outOfReach: withDependents(reached, conflictingWith(reached)),
+  }
+}
+
+const listNames = (skillIds: readonly string[], joiner: string) =>
+  skillIds
+    .map((skillId) => CATALOG.skillsById[skillId]?.displayName ?? skillId)
+    .join(joiner)
+
+// The actionable half of "why": what this skill would need you to pick.
+const unmetReason = (
+  skill: CatalogSkill,
+  { reached, outOfReach }: Reachability
+) => {
+  const unmet = skill.requires.find((requirement) =>
+    isUnmet(requirement, reached, outOfReach)
+  )
+  if (!unmet) return undefined
+
+  return unmet.needsAny && unmet.skillIds.length > 1
+    ? `Needs one of ${listNames(unmet.skillIds, ", ")}`
+    : `Needs ${listNames(unmet.skillIds, " and ")}`
+}
+
+// Only live assignments count, everywhere a number appears: a row the roster
+// switched off is kept for the UI but is not part of what installs.
+const enabledAssignments = (entry: SkillEntry) =>
+  Object.entries(entry.assignments).filter(
+    ([, assignment]) => assignment.enabled
   )
 
 const toCell = (
   skill: GridSkill,
   entry: SkillEntry | undefined,
-  conflictId?: string
+  reason?: string
 ): SkillCellView => ({
   skill,
   entry,
   selected: entry !== undefined,
-  incompatible: conflictId !== undefined,
-  incompatibleReason: conflictId
-    ? `Conflicts with ${CATALOG.skillsById[conflictId]?.displayName ?? conflictId}`
-    : undefined,
-  agentCount: entry ? Object.keys(entry.assignments).length : 0,
+  incompatible: reason !== undefined,
+  incompatibleReason: reason,
+  agentCount: entry ? enabledAssignments(entry).length : 0,
 })
 
 export const UNCATEGORIZED_ID = "uncategorized"
@@ -140,6 +290,9 @@ type GridContext = {
   config: ConfigSelection
   search: ConfigureSearch
   selectedIds: Set<string>
+  // Computed once per derivation, not per cell — it is a whole-catalogue
+  // fixpoint and the grid asks it 222 times.
+  reachability: Reachability
   addedByCategory: Map<string, AddedSkill[]>
 }
 
@@ -165,16 +318,37 @@ const survivesSelectionFilter = (
   search: ConfigureSearch
 ) => !search.sel || cell.selected
 
+// A selected skill is never disabled, whatever the selection did to it — the
+// way out of a bad combination is to click it off.
+//
+// An exclusive sibling is never disabled either: picking one swaps rather than
+// adds, so disabling the rest would strand the user on their first choice.
 const toCatalogCell = (
   skill: GridSkill,
   category: CatalogCategory,
-  { config, selectedIds }: GridContext
+  { config, selectedIds, reachability }: GridContext
 ): SkillCellView => {
   const entry = config.skills[skill.id]
   const source = CATALOG.skillsById[skill.id]
 
   if (entry || !source) return toCell(skill, entry)
-  return toCell(skill, entry, findConflict(source, category, selectedIds))
+
+  const conflictId = findConflict(
+    source,
+    category,
+    selectedIds,
+    reachability.reached
+  )
+  if (conflictId) {
+    return toCell(
+      skill,
+      entry,
+      `Conflicts with ${CATALOG.skillsById[conflictId]?.displayName ?? conflictId}`
+    )
+  }
+
+  if (!reachability.outOfReach.has(skill.id)) return toCell(skill, entry)
+  return toCell(skill, entry, unmetReason(source, reachability))
 }
 
 const catalogCellsIn = (
@@ -254,10 +428,12 @@ export const selectDomainViews = (
   added: AddedSkill[],
   search: ConfigureSearch
 ): DomainView[] => {
+  const selectedIds = new Set(Object.keys(config.skills))
   const context: GridContext = {
     config,
     search,
-    selectedIds: new Set(Object.keys(config.skills)),
+    selectedIds,
+    reachability: selectReachability(selectedIds),
     addedByCategory: groupAddedByCategory(added),
   }
 
@@ -273,15 +449,28 @@ export const selectDomainViews = (
 }
 // ── Roster ───────────────────────────────────────────────────────────────
 
-export type RosterSkill = {
+export type RosterSkillRow = {
   id: string
   displayName: string
   load: LoadState
+  // The row's own switch; the agent being off recesses it separately.
+  enabled: boolean
+  // Every on-agent carrying this skill live, in roster order. The where-used
+  // number appears only when the skill reaches beyond one agent.
+  usedBy: SubAgent[]
 }
 
-export type RosterAgent = {
+export type RosterAgentRow = {
   agent: SubAgent
-  skills: RosterSkill[]
+  on: boolean
+  skills: RosterSkillRow[]
+}
+
+export type RosterDomainGroup = {
+  domainId: string
+  label: string
+  onCount: number
+  agents: RosterAgentRow[]
 }
 
 const displayNameOf = (skillId: string, added: AddedSkill[]) =>
@@ -297,31 +486,41 @@ const byDisplayName = (
   b: { displayName: string }
 ) => a.displayName.localeCompare(b.displayName)
 
-const allAssignments = (config: ConfigSelection) =>
-  Object.values(config.skills).flatMap((entry) =>
-    Object.entries(entry.assignments)
-  )
+// skill id → position in the catalogue, so roster rows list in the grid's
+// order — what the prototype does. Added skills fall to the end, by name.
+const CATALOG_POSITION = new Map(
+  CATALOG.domains
+    .flatMap((domain) => domain.categories)
+    .flatMap((category) => category.skills)
+    .map((skill, index) => [skill.id as string, index])
+)
 
-const countSkillsByAgent = (config: ConfigSelection) => {
-  const counts: Record<string, number> = {}
+const byCatalogPosition = (
+  a: { id: string; displayName: string },
+  b: { id: string; displayName: string }
+) =>
+  (CATALOG_POSITION.get(a.id) ?? Infinity) -
+    (CATALOG_POSITION.get(b.id) ?? Infinity) ||
+  a.displayName.localeCompare(b.displayName)
 
-  for (const [agentId] of allAssignments(config)) {
-    counts[agentId] = (counts[agentId] ?? 0) + 1
-  }
-
-  return counts
+type AgentSkill = {
+  id: string
+  displayName: string
+  load: LoadState
+  enabled: boolean
 }
 
-const groupSkillsByAgent = (config: ConfigSelection, added: AddedSkill[]) => {
-  const byAgent = new Map<string, RosterSkill[]>()
+const skillsByAgent = (config: ConfigSelection, added: AddedSkill[]) => {
+  const byAgent = new Map<string, AgentSkill[]>()
 
   for (const [skillId, entry] of Object.entries(config.skills)) {
-    for (const [agentId, load] of Object.entries(entry.assignments)) {
+    for (const [agentId, assignment] of Object.entries(entry.assignments)) {
       const bucket = byAgent.get(agentId) ?? []
       bucket.push({
         id: skillId,
         displayName: displayNameOf(skillId, added),
-        load,
+        load: assignment.load,
+        enabled: assignment.enabled,
       })
       byAgent.set(agentId, bucket)
     }
@@ -330,29 +529,55 @@ const groupSkillsByAgent = (config: ConfigSelection, added: AddedSkill[]) => {
   return byAgent
 }
 
-// Every sub-agent that exists, with how many skills it holds.
-export const selectAvailableAgents = (config: ConfigSelection) => {
-  const counts = countSkillsByAgent(config)
+// skill id → the on-agents carrying it live, in roster order — what the
+// where-used tooltip lists. Off agents and switched-off rows do not count:
+// the number answers "where else will this actually install".
+const liveUsesBySkill = (config: ConfigSelection) => {
+  const uses = new Map<string, SubAgent[]>()
 
-  return allAgents().map((agent) => ({
-    agent,
-    count: counts[agent.id] ?? 0,
-  }))
+  for (const agent of allAgents()) {
+    if (!isAgentOn(config, agent.id)) continue
+
+    for (const [skillId, entry] of Object.entries(config.skills)) {
+      if (!entry.assignments[agent.id]?.enabled) continue
+      const bucket = uses.get(skillId) ?? []
+      bucket.push(agent)
+      uses.set(skillId, bucket)
+    }
+  }
+
+  return uses
 }
 
-// Only the sub-agents that actually hold skills, with their skill lists.
-export const selectAgentsInUse = (
+// The whole right panel: every domain that has agents, every agent it has —
+// on or off — and under each agent every assignment it holds, including the
+// switched-off ones, which render recessed rather than vanish.
+export const selectRosterGroups = (
   config: ConfigSelection,
   added: AddedSkill[]
-): RosterAgent[] => {
-  const byAgent = groupSkillsByAgent(config, added)
+): RosterDomainGroup[] => {
+  const byAgent = skillsByAgent(config, added)
+  const uses = liveUsesBySkill(config)
 
-  return allAgents()
-    .filter((agent) => byAgent.has(agent.id))
-    .map((agent) => ({
+  return SUB_AGENT_GROUPS.map((group) => {
+    const agents = group.agents.map((agent): RosterAgentRow => ({
       agent,
-      skills: [...(byAgent.get(agent.id) ?? [])].sort(byDisplayName),
+      on: isAgentOn(config, agent.id),
+      skills: [...(byAgent.get(agent.id) ?? [])]
+        .sort(byCatalogPosition)
+        .map((skill): RosterSkillRow => ({
+          ...skill,
+          usedBy: uses.get(skill.id) ?? [],
+        })),
     }))
+
+    return {
+      domainId: group.domainId,
+      label: group.label,
+      onCount: agents.filter((row) => row.on).length,
+      agents,
+    }
+  })
 }
 
 // ── Summaries ────────────────────────────────────────────────────────────
@@ -365,19 +590,28 @@ export type ConfigSummary = {
   ejectedCount: number
 }
 
-const isPreloaded = ([, load]: [string, LoadState]) => load === "preloaded"
 const isEjected = (entry: SkillEntry) => entry.install === "eject"
 
+// What would install: on agents (a pin with no skills still counts — a base
+// agent), and the live assignments they hold.
 export const summarize = (config: ConfigSelection): ConfigSummary => {
   const entries = Object.values(config.skills)
-  const assignments = allAssignments(config)
-  const agentIds = new Set(assignments.map(([agentId]) => agentId))
+  const onIds = new Set(
+    allAgents()
+      .map((agent) => agent.id as string)
+      .filter((agentId) => isAgentOn(config, agentId))
+  )
+  const live = entries
+    .flatMap(enabledAssignments)
+    .filter(([agentId]) => onIds.has(agentId))
 
   return {
     skillCount: entries.length,
-    agentCount: agentIds.size,
-    assignmentCount: assignments.length,
-    preloadedCount: assignments.filter(isPreloaded).length,
+    agentCount: onIds.size,
+    assignmentCount: live.length,
+    preloadedCount: live.filter(
+      ([, assignment]) => assignment.load === "preloaded"
+    ).length,
     ejectedCount: entries.filter(isEjected).length,
   }
 }
@@ -390,16 +624,19 @@ export type InventorySkill = {
   install: "plugin" | "eject"
 }
 
+export type InventoryAgent = {
+  agent: SubAgent
+  // Pinned on with nothing assigned — installs as front-matter only.
+  baseOnly: boolean
+}
+
 export type InstallInventory = {
   project: InventorySkill[]
   global: InventorySkill[]
-  agents: SubAgent[]
+  agents: InventoryAgent[]
 }
 
 type ScopedInventorySkill = InventorySkill & { scope: "project" | "global" }
-
-const assignedAgentIds = (config: ConfigSelection) =>
-  new Set(allAssignments(config).map(([agentId]) => agentId))
 
 const toInventorySkills = (
   config: ConfigSelection,
@@ -423,12 +660,18 @@ export const selectInstallInventory = (
   added: AddedSkill[]
 ): InstallInventory => {
   const skills = toInventorySkills(config, added)
-  const assigned = assignedAgentIds(config)
+
+  const holdsSkills = (agentId: string) =>
+    Object.values(config.skills).some(
+      (entry) => entry.assignments[agentId]?.enabled
+    )
 
   return {
     project: skills.filter(inScope("project")),
     global: skills.filter(inScope("global")),
-    agents: allAgents().filter((agent) => assigned.has(agent.id)),
+    agents: allAgents()
+      .filter((agent) => isAgentOn(config, agent.id))
+      .map((agent) => ({ agent, baseOnly: !holdsSkills(agent.id) })),
   }
 }
 
@@ -441,7 +684,7 @@ const sameSet = (a: readonly string[], b: readonly string[]) => {
 }
 
 const sameAssignments = (
-  assignments: Record<string, LoadState>,
+  assignments: SkillEntry["assignments"],
   agents: readonly string[],
   preloaded: boolean
 ) => {
@@ -449,7 +692,10 @@ const sameAssignments = (
   if (!sameSet(assignedIds, agents)) return false
 
   const expected: LoadState = preloaded ? "preloaded" : "lazy"
-  return assignedIds.every((agentId) => assignments[agentId] === expected)
+  return assignedIds.every((agentId) => {
+    const assignment = assignments[agentId]
+    return assignment?.enabled === true && assignment.load === expected
+  })
 }
 
 const hasDefaultOptions = (entry: SkillEntry) =>
@@ -467,9 +713,12 @@ const isSkillEdited = (
   !hasDefaultOptions(entry) ||
   !sameAssignments(entry.assignments, expectedAgents, preloaded)
 
-// The design's "Custom" label, where any edit counts — so options and
-// assignments are compared, not just which skills are selected.
+// The design's "Custom" label, where any edit counts — so options, assignments
+// and agent pins are compared, not just which skills are selected.
 export const isStackCustom = (config: ConfigSelection): boolean => {
+  // A pin is an edit wherever it appears: `applyStack` writes none.
+  if (Object.keys(config.pins).length > 0) return true
+
   if (config.stackId === null) return Object.keys(config.skills).length > 0
 
   const expansion = expandStack(config.stackId)

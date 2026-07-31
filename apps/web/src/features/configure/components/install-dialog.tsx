@@ -131,10 +131,16 @@ export function InstallDialog({
                 Project
               </div>
             )}
-            {inventory.agents.map((agent) => (
+            {inventory.agents.map(({ agent, baseOnly }) => (
               <div key={agent.id} className="py-0.5 text-11 text-ink-2">
                 {DOMAIN_LABELS[agent.domainId].toLowerCase()} ·{" "}
                 {agent.label.toLowerCase()}
+                {/* A pinned agent installs as front-matter alone. */}
+                {baseOnly && (
+                  <span className="pl-1.5 text-10 text-roster-empty">
+                    no skills — base agent
+                  </span>
+                )}
               </div>
             ))}
           </DialogPane>

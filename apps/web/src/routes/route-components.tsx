@@ -10,7 +10,7 @@ import { NavRail } from "@/components/nav-rail"
 // The route supplies the other two columns, so Docs can span both.
 export function RootLayout() {
   return (
-    <div className="mx-auto grid max-w-[102.75rem] min-w-[82.75rem] grid-cols-[9.5rem_minmax(43.75rem,1fr)_16.25rem] items-start bg-page">
+    <div className="mx-auto grid max-w-[105.25rem] min-w-[85.25rem] grid-cols-[9.5rem_minmax(43.75rem,1fr)_18.75rem] items-start bg-page">
       <NavRail />
       <Outlet />
     </div>

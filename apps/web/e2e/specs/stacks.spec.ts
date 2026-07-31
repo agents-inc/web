@@ -15,7 +15,7 @@ test.describe("choosing a stack", () => {
       "aria-pressed",
       "true"
     )
-    await expect(configure.roster.summary).toContainText("0 skills")
+    await expect(configure.roster.installButton).toContainText("0 skills")
   })
 
   test("applying a stack selects its skills", async ({ configure }) => {
@@ -28,7 +28,7 @@ test.describe("choosing a stack", () => {
     await expect(
       configure.skillIn(web, CATEGORY, STACK_MEMBER_SKILL).root
     ).toHaveAttribute("aria-pressed", "true")
-    await expect(configure.roster.summary).not.toContainText("0 skills")
+    await expect(configure.roster.installButton).not.toContainText("0 skills")
   })
 
   test("applying a stack changes the instructional divider", async ({

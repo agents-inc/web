@@ -7,11 +7,11 @@ const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8787"
 
 const createdSchema = z.object({ id: z.string().min(1) })
 
-export type ShareResult = { ok: true; id: string } | { ok: false; error: string }
+export type ShareResult =
+  { ok: true; id: string } | { ok: false; error: string }
 
 export type SharedConfigResult =
-  | { ok: true; payload: SeedPayload }
-  | { ok: false; error: string }
+  { ok: true; payload: SeedPayload } | { ok: false; error: string }
 
 export const createSharedConfig = async (
   payload: SeedPayload
@@ -49,7 +49,10 @@ export const fetchSharedConfig = async (
       return { ok: false, error: "this share link points to nothing" }
     }
     if (!response.ok) {
-      return { ok: false, error: `loading the shared config failed (${response.status})` }
+      return {
+        ok: false,
+        error: `loading the shared config failed (${response.status})`,
+      }
     }
 
     const parsed = seedPayloadSchema.safeParse(await response.json())

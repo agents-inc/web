@@ -81,8 +81,12 @@ test.describe("opening a share link", () => {
 
     const skillNames = Object.keys(STORED_PAYLOAD.skills)
     expect(skillNames).toHaveLength(1)
-    await expect(configure.roster.summary).toContainText("1 skills")
-    await expect(configure.roster.summary).toContainText("1 preloaded")
+    await expect(configure.roster.installButton).toContainText(
+      "1 sub-agent and 1 skill"
+    )
+    await expect(
+      configure.roster.loadWord(EXCLUSIVE_CATEGORY.first, "web-developer")
+    ).toHaveAccessibleName("Load mode: preloaded")
   })
 
   test("a dead link reports itself and leaves the config alone", async ({
@@ -96,9 +100,7 @@ test.describe("opening a share link", () => {
 
     await page.goto("/?fromId=gone0000")
 
-    await expect(page.getByRole("alert")).toContainText(
-      "points to nothing"
-    )
+    await expect(page.getByRole("alert")).toContainText("points to nothing")
     // Vue was selected before following the link and must still be.
     const vue = configure.skillIn(
       DOMAINS.web,

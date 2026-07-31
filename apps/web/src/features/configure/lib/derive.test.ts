@@ -1,10 +1,17 @@
-import { CATALOG, STACKS, expandStack } from "@workspace/matrix"
+import {
+  CATALOG,
+  STACKS,
+  SUB_AGENT_GROUPS,
+  expandStack,
+} from "@workspace/matrix"
 import { describe, expect, it } from "vitest"
 
 import type { ConfigureSearch } from "@/routes/search"
 import type { AddedSkill } from "@/stores/added-skills-store"
 import {
   DEFAULT_SKILL_OPTIONS,
+  type Assignment,
+  type LoadState,
   type SkillEntry,
 } from "@/stores/persisted-schema"
 import {
@@ -12,12 +19,14 @@ import {
   monogramOf,
   selectDomainViews,
   selectInstallInventory,
+  selectReachability,
+  selectRosterGroups,
   summarize,
   type ConfigSelection,
 } from "./derive"
 
 // `derive.ts` is where the screen's arithmetic lives, and most of it is
-// combinatorial: `isStackCustom` alone has six independent ways to flip, and
+// combinatorial: `isStackCustom` alone has seven independent ways to flip, and
 // `selectDomainViews` crosses four filters with two provenances of skill.
 // Each of those is one browser round-trip end-to-end and microseconds here, so
 // the browser covers that the wiring works and these cover that the sums do.
@@ -34,6 +43,20 @@ const search = (over: Partial<ConfigureSearch> = {}): ConfigureSearch => ({
   ...over,
 })
 
+const live = (load: LoadState = "lazy"): Assignment => ({
+  load,
+  enabled: true,
+})
+const off = (load: LoadState = "lazy"): Assignment => ({
+  load,
+  enabled: false,
+})
+
+const scratch = (
+  skills: Record<string, SkillEntry> = {},
+  pins: Record<string, boolean> = {}
+): ConfigSelection => ({ stackId: null, skills, pins })
+
 // A stack with real assignments, so the "unedited" baseline is not trivially empty.
 const STACK = STACKS.find((candidate) => {
   const expansion = expandStack(candidate.id)
@@ -45,6 +68,7 @@ const asApplied = (): ConfigSelection => {
   const preloaded = new Set<string>(EXPANSION.preloadedSkillIds)
   return {
     stackId: STACK.id,
+    pins: {},
     skills: Object.fromEntries(
       EXPANSION.skillIds.map((skillId) => [
         skillId,
@@ -53,7 +77,7 @@ const asApplied = (): ConfigSelection => {
           assignments: Object.fromEntries(
             (EXPANSION.agentsBySkill[skillId] ?? []).map((agentId) => [
               agentId,
-              preloaded.has(skillId) ? "preloaded" : "lazy",
+              live(preloaded.has(skillId) ? "preloaded" : "lazy"),
             ])
           ),
         } satisfies SkillEntry,
@@ -62,7 +86,11 @@ const asApplied = (): ConfigSelection => {
   }
 }
 
-const FIRST_SKILL = EXPANSION.skillIds[0]!
+// A stack member that definitely carries assignments, so the load-state and
+// row-off tests below can never silently sample an agentless skill.
+const FIRST_SKILL = EXPANSION.skillIds.find(
+  (id) => (EXPANSION.agentsBySkill[id] ?? []).length > 0
+)!
 
 const edit = (patch: Partial<SkillEntry>): ConfigSelection => {
   const applied = asApplied()
@@ -93,23 +121,22 @@ describe("isStackCustom", () => {
   })
 
   it("is false for scratch with nothing selected", () => {
-    expect(isStackCustom({ stackId: null, skills: {} })).toBe(false)
+    expect(isStackCustom(scratch())).toBe(false)
   })
 
   it("is true for scratch once anything is selected", () => {
     expect(
-      isStackCustom({
-        stackId: null,
-        skills: {
+      isStackCustom(
+        scratch({
           [FIRST_SKILL]: { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
-        },
-      })
+        })
+      )
     ).toBe(true)
   })
 
   // Every one of these is an edit the user would be upset to lose, which is
   // what the stack-switch confirm keys off. Comparing only the skill *set*
-  // would silently discard the other five.
+  // would silently discard the other six.
   it.each([
     ["install mode", { install: "eject" as const }],
     ["scope", { scope: "global" as const }],
@@ -132,29 +159,61 @@ describe("isStackCustom", () => {
   it("is true after changing only a load state", () => {
     const applied = asApplied()
     const current = applied.skills[FIRST_SKILL]!
-    const [agentId, load] = Object.entries(current.assignments)[0] ?? []
-    if (!agentId) return
+    const [agentId, assignment] = Object.entries(current.assignments)[0] ?? []
+    if (!agentId || !assignment)
+      throw new Error("sampled skill has no assignments")
 
     expect(
       isStackCustom(
         edit({
           assignments: {
             ...current.assignments,
-            [agentId]: load === "preloaded" ? "lazy" : "preloaded",
+            [agentId]: live(
+              assignment.load === "preloaded" ? "lazy" : "preloaded"
+            ),
           },
         })
       )
     ).toBe(true)
   })
 
+  it("is true after switching one roster row off", () => {
+    const applied = asApplied()
+    const current = applied.skills[FIRST_SKILL]!
+    const [agentId, assignment] = Object.entries(current.assignments)[0] ?? []
+    if (!agentId || !assignment)
+      throw new Error("sampled skill has no assignments")
+
+    expect(
+      isStackCustom(
+        edit({
+          assignments: {
+            ...current.assignments,
+            [agentId]: { ...assignment, enabled: false },
+          },
+        })
+      )
+    ).toBe(true)
+  })
+
+  // `applyStack` writes no pins, so having one is an edit wherever it appears.
+  it("is true once any agent is pinned", () => {
+    expect(
+      isStackCustom({ ...asApplied(), pins: { "web-tester": false } })
+    ).toBe(true)
+    expect(isStackCustom(scratch({}, { "web-tester": true }))).toBe(true)
+  })
+
   it("is true when the stack itself no longer exists", () => {
-    expect(isStackCustom({ stackId: "deleted-stack", skills: {} })).toBe(true)
+    expect(
+      isStackCustom({ stackId: "deleted-stack", skills: {}, pins: {} })
+    ).toBe(true)
   })
 })
 
 describe("summarize", () => {
   it("counts nothing for an empty configuration", () => {
-    expect(summarize({ stackId: null, skills: {} })).toEqual({
+    expect(summarize(scratch())).toEqual({
       skillCount: 0,
       agentCount: 0,
       assignmentCount: 0,
@@ -164,16 +223,16 @@ describe("summarize", () => {
   })
 
   it("counts each sub-agent once across skills, and assignments every time", () => {
-    const config: ConfigSelection = {
-      stackId: null,
-      skills: {
-        a: {
-          ...DEFAULT_SKILL_OPTIONS,
-          assignments: { dev: "preloaded", review: "lazy" },
+    const config = scratch({
+      a: {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {
+          "web-developer": live("preloaded"),
+          "web-reviewer": live(),
         },
-        b: { ...DEFAULT_SKILL_OPTIONS, assignments: { dev: "lazy" } },
       },
-    }
+      b: { ...DEFAULT_SKILL_OPTIONS, assignments: { "web-developer": live() } },
+    })
 
     expect(summarize(config)).toMatchObject({
       skillCount: 2,
@@ -183,38 +242,164 @@ describe("summarize", () => {
     })
   })
 
-  it("counts ejected skills rather than ejected assignments", () => {
-    const config: ConfigSelection = {
-      stackId: null,
-      skills: {
+  // A row the roster switched off must not install, so it must not count.
+  it("ignores disabled assignments everywhere", () => {
+    const config = scratch({
+      a: {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {
+          "web-developer": live("preloaded"),
+          "web-reviewer": off("preloaded"),
+        },
+      },
+    })
+
+    expect(summarize(config)).toMatchObject({
+      agentCount: 1,
+      assignmentCount: 1,
+      preloadedCount: 1,
+    })
+  })
+
+  it("counts a pinned-on agent with no skills as a base agent", () => {
+    expect(summarize(scratch({}, { "web-developer": true })).agentCount).toBe(1)
+  })
+
+  it("does not count assignments on a pinned-off agent", () => {
+    const config = scratch(
+      {
         a: {
           ...DEFAULT_SKILL_OPTIONS,
-          install: "eject",
-          assignments: { dev: "lazy", review: "lazy" },
+          assignments: { "web-developer": live() },
         },
-        b: { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
       },
-    }
+      { "web-developer": false }
+    )
+
+    expect(summarize(config)).toMatchObject({
+      agentCount: 0,
+      assignmentCount: 0,
+    })
+  })
+
+  it("counts ejected skills rather than ejected assignments", () => {
+    const config = scratch({
+      a: {
+        ...DEFAULT_SKILL_OPTIONS,
+        install: "eject",
+        assignments: { "web-developer": live(), "web-reviewer": live() },
+      },
+      b: { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
+    })
 
     expect(summarize(config).ejectedCount).toBe(1)
   })
 })
 
+describe("selectRosterGroups", () => {
+  const allRows = (config: ConfigSelection) =>
+    selectRosterGroups(config, []).flatMap((group) => group.agents)
+
+  it("lists every sub-agent that exists, on or off", () => {
+    const rows = allRows(scratch())
+
+    expect(rows).toHaveLength(
+      SUB_AGENT_GROUPS.flatMap((group) => group.agents).length
+    )
+    expect(rows.every((row) => !row.on)).toBe(true)
+  })
+
+  it("derives on from holding an enabled skill", () => {
+    const rows = allRows(
+      scratch({
+        a: {
+          ...DEFAULT_SKILL_OPTIONS,
+          assignments: { "web-developer": live(), "web-reviewer": off() },
+        },
+      })
+    )
+
+    expect(rows.find((row) => row.agent.id === "web-developer")?.on).toBe(true)
+    // A disabled row keeps the skill listed but does not switch the agent on.
+    const reviewer = rows.find((row) => row.agent.id === "web-reviewer")!
+    expect(reviewer.on).toBe(false)
+    expect(reviewer.skills.map((skill) => skill.id)).toEqual(["a"])
+    expect(reviewer.skills[0]!.enabled).toBe(false)
+  })
+
+  it("lets a pin override the derived state in both directions", () => {
+    const rows = allRows(
+      scratch(
+        {
+          a: {
+            ...DEFAULT_SKILL_OPTIONS,
+            assignments: { "web-developer": live() },
+          },
+        },
+        { "web-developer": false, "web-tester": true }
+      )
+    )
+
+    expect(rows.find((row) => row.agent.id === "web-developer")?.on).toBe(false)
+    expect(rows.find((row) => row.agent.id === "web-tester")?.on).toBe(true)
+  })
+
+  it("counts only on agents in the domain badge", () => {
+    const groups = selectRosterGroups(
+      scratch({
+        a: {
+          ...DEFAULT_SKILL_OPTIONS,
+          assignments: { "web-developer": live(), "web-reviewer": live() },
+        },
+      }),
+      []
+    )
+    const web = groups.find((group) => group.domainId === "web")!
+
+    expect(web.onCount).toBe(2)
+    expect(web.agents.length).toBeGreaterThan(2)
+  })
+
+  it("lists where-used only across on agents carrying the skill live", () => {
+    const rows = allRows(
+      scratch(
+        {
+          a: {
+            ...DEFAULT_SKILL_OPTIONS,
+            assignments: {
+              "web-developer": live(),
+              "web-reviewer": live(),
+              // Disabled — must not appear as a use.
+              "web-tester": off(),
+              // Live, but the agent is pinned off — must not appear either.
+              "api-developer": live(),
+            },
+          },
+        },
+        { "api-developer": false }
+      )
+    )
+
+    const usedBy = rows
+      .find((row) => row.agent.id === "web-developer")!
+      .skills[0]!.usedBy.map((agent) => agent.id)
+
+    expect(usedBy).toEqual(["web-developer", "web-reviewer"])
+  })
+})
+
 describe("selectInstallInventory", () => {
-  const config: ConfigSelection = {
-    stackId: null,
-    skills: {
-      [FIRST_SKILL]: {
-        ...DEFAULT_SKILL_OPTIONS,
-        scope: "global",
-        assignments: {},
-      },
-      [EXPANSION.skillIds[1]!]: {
-        ...DEFAULT_SKILL_OPTIONS,
-        assignments: {},
-      },
+  const config = scratch({
+    [FIRST_SKILL]: {
+      ...DEFAULT_SKILL_OPTIONS,
+      scope: "global",
+      assignments: {},
     },
-  }
+    [EXPANSION.skillIds[1]!]: {
+      ...DEFAULT_SKILL_OPTIONS,
+      assignments: {},
+    },
+  })
 
   it("splits skills by scope", () => {
     const inventory = selectInstallInventory(config, [])
@@ -237,20 +422,45 @@ describe("selectInstallInventory", () => {
       []
     )
 
-    expect(forward.agents.map((agent) => agent.id)).toEqual(
-      reversed.agents.map((agent) => agent.id)
+    expect(forward.agents.map(({ agent }) => agent.id)).toEqual(
+      reversed.agents.map(({ agent }) => agent.id)
     )
+  })
+
+  it("includes a pinned bare agent, marked base-only", () => {
+    const inventory = selectInstallInventory(
+      scratch({}, { "web-developer": true }),
+      []
+    )
+
+    expect(inventory.agents).toHaveLength(1)
+    expect(inventory.agents[0]!.agent.id).toBe("web-developer")
+    expect(inventory.agents[0]!.baseOnly).toBe(true)
+  })
+
+  it("excludes a pinned-off agent even when skills point at it", () => {
+    const inventory = selectInstallInventory(
+      scratch(
+        {
+          a: {
+            ...DEFAULT_SKILL_OPTIONS,
+            assignments: { "web-developer": live() },
+          },
+        },
+        { "web-developer": false }
+      ),
+      []
+    )
+
+    expect(inventory.agents).toEqual([])
   })
 })
 
 describe("selectDomainViews", () => {
-  const selected: ConfigSelection = {
-    stackId: null,
-    skills: {
-      [FIRST_SKILL]: { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
-    },
-  }
-  const empty: ConfigSelection = { stackId: null, skills: {} }
+  const selected = scratch({
+    [FIRST_SKILL]: { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
+  })
+  const empty = scratch()
 
   const allCells = (config: ConfigSelection, over?: Partial<ConfigureSearch>) =>
     selectDomainViews(config, [], search(over)).flatMap((domain) =>
@@ -304,19 +514,218 @@ describe("selectDomainViews", () => {
     expect(allCells(empty, { sel: true })).toEqual([])
   })
 
-  it("derives the agent count from assignments rather than storing it", () => {
-    const config: ConfigSelection = {
-      stackId: null,
-      skills: {
-        [FIRST_SKILL]: {
-          ...DEFAULT_SKILL_OPTIONS,
-          assignments: { dev: "lazy", review: "preloaded" },
+  it("derives the agent count from live assignments only", () => {
+    const config = scratch({
+      [FIRST_SKILL]: {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {
+          "web-developer": live(),
+          "web-reviewer": live("preloaded"),
+          "web-tester": off(),
         },
       },
-    }
+    })
 
     const cell = allCells(config, { sel: true })[0]!
     expect(cell.agentCount).toBe(2)
+  })
+})
+
+// Incompatibility is the one derivation that reads the whole catalogue at
+// once, and the interesting cases are all several hops from the thing the user
+// clicked — exactly the shape that is unreadable end-to-end and cheap here.
+describe("selectReachability", () => {
+  const REACT = "web-framework-react"
+  const SVELTE = "web-framework-svelte"
+  const SVELTEKIT = "web-meta-framework-sveltekit"
+  const NUXT = "web-meta-framework-nuxt"
+  const VUE = "web-framework-vue-composition-api"
+  const PINIA = "web-state-pinia"
+  const NEXTJS = "web-meta-framework-nextjs"
+  const ANGULAR = "web-framework-angular-standalone"
+  const NGRX = "web-state-ngrx-signalstore"
+
+  const ruledOutBy = (...selected: string[]) =>
+    selectReachability(new Set(selected)).outOfReach
+
+  it("rules out nothing while nothing is selected", () => {
+    expect(ruledOutBy().size).toBe(0)
+  })
+
+  it("rules out the skills a selection directly conflicts with", () => {
+    expect(ruledOutBy(REACT).has(SVELTE)).toBe(true)
+  })
+
+  // The case `requires` exists for: nothing links React to SvelteKit
+  // directly — `conflictsWith` never leaves its own category. It is
+  // SvelteKit → requires Svelte → conflicts with React.
+  it("follows a requirement onto the skill built on it", () => {
+    expect(ruledOutBy(REACT).has(SVELTEKIT)).toBe(true)
+  })
+
+  it("keeps following after the first hop", () => {
+    const out = ruledOutBy(REACT)
+
+    // Pinia needs Vue or Nuxt; Nuxt needs Vue; Vue conflicts with React.
+    expect(out.has(VUE)).toBe(true)
+    expect(out.has(NUXT)).toBe(true)
+    expect(out.has(PINIA)).toBe(true)
+  })
+
+  it("leaves a skill whose requirement the selection satisfies", () => {
+    // Next.js is built on React, so choosing React is what enables it.
+    expect(ruledOutBy(REACT).has(NEXTJS)).toBe(false)
+  })
+
+  it("never rules out what is selected", () => {
+    const out = ruledOutBy(REACT, SVELTE)
+    expect(out.has(REACT)).toBe(false)
+    expect(out.has(SVELTE)).toBe(false)
+  })
+
+  // The other direction, and the one the rule missed at first: Next.js is
+  // built on React, so choosing it chooses React — and everything React
+  // conflicts with has to go, even though Next.js names none of them.
+  describe("what the selection implies", () => {
+    it("counts an implied skill as reached", () => {
+      expect([...selectReachability(new Set([NEXTJS])).reached]).toContain(
+        REACT
+      )
+    })
+
+    it("rules out what the implied skill conflicts with", () => {
+      const out = ruledOutBy(NEXTJS)
+
+      expect(out.has(ANGULAR)).toBe(true)
+      expect(out.has(VUE)).toBe(true)
+      expect(out.has(SVELTE)).toBe(true)
+    })
+
+    it("carries on through the implied skill's own tail", () => {
+      const out = ruledOutBy(NEXTJS)
+
+      expect(out.has(NUXT)).toBe(true) // needs Vue
+      expect(out.has(PINIA)).toBe(true) // needs Vue or Nuxt
+      expect(out.has(NGRX)).toBe(true) // needs Angular
+    })
+
+    // "Pinia needs Vue *or* Nuxt" cannot name which, so selecting Pinia must
+    // not silently commit the user to either.
+    it("implies nothing from an ambiguous requirement", () => {
+      const { reached } = selectReachability(new Set([PINIA]))
+
+      expect(reached.has(VUE)).toBe(false)
+      expect(reached.has(NUXT)).toBe(false)
+    })
+
+    it("implies every member of an all-of requirement", () => {
+      // shadcn/ui needs Tailwind outright, plus one of the React frameworks —
+      // the second group is ambiguous, so only Tailwind is implied.
+      const { reached } = selectReachability(new Set(["web-ui-shadcn-ui"]))
+
+      expect(reached.has("web-styling-tailwind")).toBe(true)
+      expect(reached.has(REACT)).toBe(false)
+    })
+  })
+})
+
+describe("incompatible cells", () => {
+  const cellFor = (config: ConfigSelection, skillId: string) =>
+    selectDomainViews(config, [], SEARCH)
+      .flatMap((domain) => domain.categories.flatMap((c) => c.cells))
+      .find((cell) => cell.skill.id === skillId)
+
+  const withReact = scratch({
+    "web-framework-react": { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
+  })
+
+  it("marks an unreachable skill incompatible, with the reason", () => {
+    const cell = cellFor(withReact, "web-meta-framework-sveltekit")!
+
+    expect(cell.incompatible).toBe(true)
+    expect(cell.incompatibleReason).toBe("Needs Svelte")
+  })
+
+  it("names every candidate when any one of them would do", () => {
+    const cell = cellFor(withReact, "web-state-pinia")!
+
+    expect(cell.incompatible).toBe(true)
+    expect(cell.incompatibleReason).toMatch(/^Needs one of /)
+    expect(cell.incompatibleReason).toContain("Vue")
+    expect(cell.incompatibleReason).toContain("Nuxt")
+  })
+
+  // Picking one of these replaces rather than adds, so disabling the rest
+  // would strand the user on their first choice with no way back.
+  it("leaves exclusive siblings selectable", () => {
+    for (const sibling of [
+      "web-framework-vue-composition-api",
+      "web-framework-svelte",
+    ]) {
+      expect(cellFor(withReact, sibling)!.incompatible).toBe(false)
+    }
+  })
+
+  // The exemption is about *swapping out* the thing you conflict with. When
+  // React is only implied by Next.js, clicking Angular would not remove it —
+  // the store evicts inside one category — so the pair would survive and the
+  // exemption must not apply.
+  it("disables a sibling that conflicts with a merely implied skill", () => {
+    const withNextjs = scratch({
+      "web-meta-framework-nextjs": {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {},
+      },
+    })
+
+    const angular = cellFor(withNextjs, "web-framework-angular-standalone")!
+    expect(angular.incompatible).toBe(true)
+    expect(angular.incompatibleReason).toBe("Conflicts with React")
+
+    // React itself is implied, not selected, so it stays a live choice.
+    expect(cellFor(withNextjs, "web-framework-react")!.incompatible).toBe(false)
+  })
+
+  // Both are meta-frameworks, so swapping really is the way between them.
+  it("still leaves the implier's own siblings swappable", () => {
+    const withNextjs = scratch({
+      "web-meta-framework-nextjs": {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {},
+      },
+    })
+
+    expect(cellFor(withNextjs, "web-meta-framework-remix")!.incompatible).toBe(
+      false
+    )
+  })
+
+  // Its requirement is unsatisfiable whichever sibling you swap to, so the
+  // sibling exemption must not rescue it.
+  it("disables a sibling whose own requirement is out of reach", () => {
+    const config = scratch({
+      "web-framework-react": { ...DEFAULT_SKILL_OPTIONS, assignments: {} },
+      "web-meta-framework-nextjs": {
+        ...DEFAULT_SKILL_OPTIONS,
+        assignments: {},
+      },
+    })
+
+    expect(cellFor(config, "web-meta-framework-sveltekit")!.incompatible).toBe(
+      true
+    )
+  })
+
+  it("never marks a selected skill incompatible", () => {
+    expect(cellFor(withReact, "web-framework-react")!.incompatible).toBe(false)
+  })
+
+  it("marks nothing while nothing is selected", () => {
+    const cells = selectDomainViews(scratch(), [], SEARCH).flatMap((domain) =>
+      domain.categories.flatMap((c) => c.cells)
+    )
+
+    expect(cells.some((cell) => cell.incompatible)).toBe(false)
   })
 })
 
@@ -332,11 +741,7 @@ describe("selectDomainViews with added skills", () => {
   }
 
   it("collects unmatched skills in their own trailing section", () => {
-    const views = selectDomainViews(
-      { stackId: null, skills: {} },
-      [uncategorised],
-      SEARCH
-    )
+    const views = selectDomainViews(scratch(), [uncategorised], SEARCH)
     const last = views.at(-1)!
 
     expect(last.id).toBe("added")
@@ -346,11 +751,7 @@ describe("selectDomainViews with added skills", () => {
   })
 
   it("marks them so the cell can draw the added tag", () => {
-    const views = selectDomainViews(
-      { stackId: null, skills: {} },
-      [uncategorised],
-      SEARCH
-    )
+    const views = selectDomainViews(scratch(), [uncategorised], SEARCH)
 
     expect(views.at(-1)!.categories[0]!.cells[0]!.skill.added).toBe(true)
   })
@@ -358,7 +759,7 @@ describe("selectDomainViews with added skills", () => {
   // `isRecommended` is a catalog flag, so an added skill can never satisfy it.
   it("hides them under the recommended filter", () => {
     const views = selectDomainViews(
-      { stackId: null, skills: {} },
+      scratch(),
       [uncategorised],
       search({ rec: true })
     )
