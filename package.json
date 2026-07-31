@@ -6,6 +6,7 @@
   "prettier": "@workspace/prettier-config",
   "scripts": {
     "build": "turbo build",
+    "deploy": "turbo deploy",
     "dev": "turbo dev",
     "lint": "turbo lint",
     "format": "turbo format",
