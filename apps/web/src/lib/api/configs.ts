@@ -1,9 +1,12 @@
 import { seedPayloadSchema, type SeedPayload } from "@workspace/matrix"
 import { z } from "zod"
 
+import { env } from "@/env"
+
 // The config-sharing worker (apps/server). Dev talks to `wrangler dev` on its
-// default port; a deployment points VITE_API_URL at the real thing.
-const API_URL: string = import.meta.env.VITE_API_URL ?? "http://localhost:8787"
+// default port; a deployment points VITE_API_URL at the real thing. There is
+// no fallback on purpose — see `env.schema.ts`.
+const API_URL = env.VITE_API_URL
 
 const createdSchema = z.object({ id: z.string().min(1) })
 
