@@ -7,6 +7,14 @@ import type { ParsedCategory, ParsedSkill } from "../schema"
 import { MATRIX } from "./source"
 import { DOMAIN_DESCRIPTIONS, DOMAIN_LABELS, compareDomains } from "./domains"
 
+// One dependency group: `needsAny` picks between "all of these" and "one of
+// these". `reason` is authored upstream ("SvelteKit is built on Svelte").
+export type SkillRequirement = {
+  skillIds: SkillId[]
+  needsAny: boolean
+  reason: string
+}
+
 export type CatalogSkill = {
   id: SkillId
   slug: string
@@ -20,7 +28,13 @@ export type CatalogSkill = {
   conflictsWith: SkillId[]
   // Soft conflict — warn, do not disable.
   discourages: SkillId[]
-  // Empty means "works with anything".
+  // What this skill is built on. The only place a cross-category
+  // incompatibility is expressed: SvelteKit requires Svelte, so picking React
+  // — which Svelte conflicts with — puts SvelteKit out of reach.
+  requires: SkillRequirement[]
+  // Unreliable upstream: it lists whole neighbourhoods rather than genuine
+  // pairings (React claims compatibility with SvelteKit), so nothing derives
+  // from it. Kept because the CLI still ships it.
   compatibleWith: SkillId[]
 }
 
@@ -66,6 +80,11 @@ const toCatalogSkill = (
     (relation) => relation.skillId as SkillId
   ),
   discourages: skill.discourages.map((relation) => relation.skillId as SkillId),
+  requires: skill.requires.map((requirement) => ({
+    skillIds: requirement.skillIds as SkillId[],
+    needsAny: requirement.needsAny,
+    reason: requirement.reason,
+  })),
   compatibleWith: skill.compatibleWith as SkillId[],
 })
 

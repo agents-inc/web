@@ -6,6 +6,7 @@ export type {
   CatalogDomain,
   CatalogCategory,
   CatalogSkill,
+  SkillRequirement,
 } from "./read-model/catalog"
 
 export { SUB_AGENT_GROUPS, SUB_AGENTS_BY_ID } from "./read-model/sub-agents"
