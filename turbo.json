@@ -24,7 +24,15 @@
       "dependsOn": [
         "build"
       ],
-      "cache": false
+      "cache": false,
+      // turbo runs tasks in a sanitized environment (envMode: strict), so
+      // wrangler sees nothing that is not named here. `passThroughEnv` rather
+      // than `env` because these are credentials: they must reach the task
+      // without becoming part of any hash.
+      "passThroughEnv": [
+        "CLOUDFLARE_API_TOKEN",
+        "CLOUDFLARE_ACCOUNT_ID"
+      ]
     },
     "lint": {
       "dependsOn": [
