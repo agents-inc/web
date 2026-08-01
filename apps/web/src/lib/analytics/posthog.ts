@@ -26,6 +26,20 @@ export const initAnalytics = async () => {
     // a user can type something of their own. Every event here is explicit.
     autocapture: false,
     capture_pageview: false,
+
+    // Each of these lazily fetches its own script, and each is a default the
+    // project enables server-side rather than something this app asked for.
+    // Declining them in code keeps the decision next to its reason: session
+    // replay records the screen, which is a privacy surface with no use here;
+    // the other three spend requests and quota answering questions about a
+    // grid of cells that the explicit events already answer.
+    //
+    // They are also the scripts blocklists match by filename, so refusing them
+    // removes console noise that reads as breakage and is not.
+    disable_session_recording: true,
+    capture_dead_clicks: false,
+    capture_heatmaps: false,
+    disable_surveys: true,
   })
 
   setAnalyticsSink(({ name, ...properties }) => posthog.capture(name, properties))
