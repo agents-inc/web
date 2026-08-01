@@ -1,6 +1,6 @@
 # Web ↔ CLI integration
 
-How a config built in this app becomes an installed project via `npx agents-inc init <id>`.
+How a config built in this app becomes an installed project via `npx agents-inc init --from <id>`.
 The CLI source lives at `claude-collective/cli` (locally `~/dev/cli`); the skills catalog at `agents-inc/skills` (locally `~/dev/skills`).
 
 ## Decision: hosted short id (2026-07-28)
@@ -35,7 +35,7 @@ learning what it is wrong about.
 There is also a wrinkle one package handles badly: **the two shared things flow in opposite
 directions.** The seed contract originates here and the CLI consumes it; the matrix originates in
 the CLI and this repo already vendors it under `packages/matrix/src/vendor/generated`. One package
-serving both is either circular or actually two packages — a decision worth making once `init <id>`
+serving both is either circular or actually two packages — a decision worth making once `init --from <id>`
 exists rather than in anticipation of it.
 
 So: **vendor the contract, and add a CI drift guard** comparing the vendored copy against the
@@ -67,7 +67,7 @@ Done:
       attached by `wrangler deploy` via `custom_domain` routes. CI deploys on push to main.
 
 - [x] **The install dialog hands out the id** (2026-08-01). It mints on open and shows
-      `npx agents-inc init <id>`, the id in amber, click-to-copy. This replaced the planned `/share`
+      `npx agents-inc init --from <id>`, the id in amber, click-to-copy. This replaced the planned `/share`
       screen, which is gone along with its nav entry and route — there was never a second thing for
       it to do. Minting is cheap because the worker reads before writing: ids are content-addressed,
       so re-opening the same configuration costs a read rather than one of the free tier's 1000
@@ -93,19 +93,64 @@ Next, in order:
 # CLI TODO
 
 **Everything below is work in the CLI repo (`~/dev/cli`), not this one.** The web side is done and
-deployed: `agentsinc.sh` hands a user `npx agents-inc init <id>`, and `api.agentsinc.sh/configs/:id`
+deployed: `agentsinc.sh` hands a user `npx agents-inc init --from <id>`, and `api.agentsinc.sh/configs/:id`
 serves the payload. Nothing here is blocked on further web work.
 
-## 1. `init <id>` — the actual integration
+## 1. `init --from <id>` — the actual integration
 
-Fetch `https://api.agentsinc.sh/configs/<id>` → validate against the vendored seed schema → map to
-`WizardResultV2` → reuse the existing pipeline (`writeProjectConfig` → skill install →
+**Start here.** `src/cli/commands/init.tsx` is an oclif command with no positional args today, only
+flags (`--refresh`, `--source`). It needs an optional positional.
+
+**A flag, `--from <id>`, not a positional** (decided 2026-08-01). Nobody types this line — the
+install dialog copies itself — so the brevity a positional buys is worth nothing, while a named flag
+says what the id is and leaves room to accept a file or a URL later without inventing a second one.
+The web app emits the flag form and is deployed, so the two already agree.
+
+```ts
+static flags = {
+  ...BaseCommand.baseFlags,
+  refresh: Flags.boolean({ description: "Force refresh from remote source", default: false }),
+  from: Flags.string({
+    description: "Config id from agentsinc.sh — installs that configuration directly",
+  }),
+}
+```
+
+Optional, so a bare `init` keeps starting the wizard exactly as it does now.
+
+Then: fetch `https://api.agentsinc.sh/configs/<id>` → validate against the vendored seed schema →
+map to `WizardResultV2` → reuse the existing pipeline (`writeProjectConfig` → skill install →
 `compileAgentsAllScopes`). Headless, or landing on the wizard's confirm step. **No TTY-size gate on
 this path** — a CI or scripted install has no terminal to measure.
+
+Two things in the current implementation to decide about rather than trip over:
+
+- `showDashboardIfInitialized()` returns early in an already-initialised project. **With an id it
+  must not: `init --from <id>` overrides an existing agents-inc install at the root** (decided 2026-08-01).
+  A bare `init` keeps today's dashboard behaviour untouched — the divergence is the id, not the
+  command.
+
+  What "override" means is the part still open, and the two readings differ materially. Writing the
+  config and installing what the payload names leaves behind any skill the _previous_ config
+  installed and this one omits, so the project ends up as the union of both — which is not the
+  configuration that was shared, and the difference is invisible until someone wonders why an agent
+  has a skill nobody picked. Making the project actually match the payload means removing those,
+  which is destructive and wants either a confirmation or an explicit flag. `uninstall` already
+  exists, so the machinery is probably there.
+
+  Non-interactive runs are the wrinkle: there is nobody to confirm to, and the whole point of the id
+  path is that it works headless. Prompting when a TTY exists and requiring a flag when it does not
+  is the usual shape.
+
+- The command renders an Ink wizard immediately. The id path should not, or should render only the
+  confirm step.
 
 Decode policy, which is not negotiable because it is what makes ids survive catalog churn:
 **warn and skip unknown ids, never fail the whole payload.** `matrixVersion` is diagnostics only and
 must never gate a decode.
+
+Suggested order, since item 4 is the dependency: vendor the schema, then the positional, then the
+mapping.
 
 ## 2. Send a distinct `User-Agent`
 
@@ -174,6 +219,39 @@ jobs:
 `WEB_REPO_DISPATCH_TOKEN` is the one unavoidable credential: cross-repo triggering needs a token that
 can write to this repo. Use a fine-grained PAT scoped to `agents-inc/web` alone with **contents:
 write** and nothing else, or a GitHub App if you would rather not have a personal token in the loop.
+
+### Testing it
+
+The two halves fail independently, so test them separately — otherwise a broken run tells you
+nothing about which end is at fault.
+
+**1. The receiving half, no token needed.** Runs the regenerate → diff → suite → PR path end to end:
+
+```
+gh workflow run sync-catalog.yml -R agents-inc/web
+gh run watch -R agents-inc/web
+```
+
+Expect either "Catalog is already in sync" or a `catalog-sync` PR. Both are passes; the first just
+means the vendored copy is current.
+
+**2. The dispatch path, still no token.** Your own `gh` auth stands in for the PAT, so this proves
+the event wiring without waiting on the secret:
+
+```
+gh api repos/agents-inc/web/dispatches \
+  -f event_type=catalog-changed \
+  -F client_payload[sha]=test
+```
+
+A run should appear within seconds. If nothing fires, the `types:` filter and the event name have
+drifted apart.
+
+**3. The whole chain.** Only once `WEB_REPO_DISPATCH_TOKEN` exists: touch a watched path in the CLI
+repo, push to main, and watch `notify-web` succeed there and `sync-catalog` start here.
+
+A 403 on step 3 with a valid-looking token usually means the fine-grained PAT is pending **org
+approval** rather than mis-scoped — `agents-inc` owns the target repo, and orgs can gate PATs.
 
 ## 7. Later
 

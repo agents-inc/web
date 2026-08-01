@@ -13,6 +13,11 @@ const COPIED_DECAY_MS = 2_000
 // works, it simply does not carry what was configured here.
 const BASE_COMMAND = "npx agents-inc init"
 
+// A flag rather than a positional. Nobody types this line — the block copies
+// itself — so brevity buys nothing, while a named flag says what the id is and
+// leaves room to accept a file or a URL later without a second one.
+const ID_FLAG = "--from"
+
 export type InstallCommand =
   { status: "minting" } | { status: "ready"; id: string } | { status: "failed" }
 
@@ -73,7 +78,9 @@ export const useInstallCommand = (config: ConfigSelection, open: boolean) => {
         : { status: "ready", id: minted.id }
 
   const text =
-    command.status === "ready" ? `${BASE_COMMAND} ${command.id}` : BASE_COMMAND
+    command.status === "ready"
+      ? `${BASE_COMMAND} ${ID_FLAG} ${command.id}`
+      : BASE_COMMAND
 
   const copy = async () => {
     try {

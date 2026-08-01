@@ -105,7 +105,7 @@ export function InstallDialog({
   // with is what makes the drop-off before it readable.
   const open = dialog === "install"
 
-  const { command, copied, copy } = useInstallCommand(config, open)
+  const { command, copied, copy, text } = useInstallCommand(config, open)
   useEffect(() => {
     if (!open) return
 
@@ -223,11 +223,10 @@ export function InstallDialog({
                   copyable
                   role="button"
                   tabIndex={0}
-                  aria-label={
-                    command.status === "ready"
-                      ? `Copy npx agents-inc init ${command.id}`
-                      : "Copy npx agents-inc init"
-                  }
+                  // The hook's own string, not a second copy assembled here —
+                  // otherwise what is announced and what is copied drift the
+                  // first time the command changes shape.
+                  aria-label={`Copy ${text}`}
                   onClick={() => void copy()}
                   onKeyDown={(event) => {
                     if (event.key !== "Enter" && event.key !== " ") return
@@ -235,9 +234,13 @@ export function InstallDialog({
                     void copy()
                   }}
                 >
-                  npx agents-inc init
-                  {command.status === "ready" && (
-                    <span className="text-brand-ink"> {command.id}</span>
+                  {command.status === "ready" ? (
+                    <>
+                      {text.slice(0, text.lastIndexOf(" ") + 1)}
+                      <span className="text-brand-ink">{command.id}</span>
+                    </>
+                  ) : (
+                    text
                   )}
                 </CommandBlock>
                 {/* Always rendered so the block never shifts under the cursor

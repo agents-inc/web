@@ -51,7 +51,7 @@ test.describe("install dialog", () => {
   // user just chose.
   test("appends the minted id to the init command", async ({ configure }) => {
     await expect(
-      configure.installDialog.command(`npx agents-inc init ${STORED_ID}`)
+      configure.installDialog.command(`npx agents-inc init --from ${STORED_ID}`)
     ).toBeVisible()
   })
 
@@ -61,7 +61,7 @@ test.describe("install dialog", () => {
     await expect(configure.installDialog.root).toContainText("copied")
 
     const clipboard = await page.evaluate(() => navigator.clipboard.readText())
-    expect(clipboard).toBe(`npx agents-inc init ${STORED_ID}`)
+    expect(clipboard).toBe(`npx agents-inc init --from ${STORED_ID}`)
   })
 
   // Installing is a CLI action, so the only button is Close.
