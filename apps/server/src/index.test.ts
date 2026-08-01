@@ -112,3 +112,48 @@ describe("CORS", () => {
     expect(response.headers.get("access-control-allow-origin")).toBeNull()
   })
 })
+
+// The tunnel exists so browser tracking prevention cannot silently drop error
+// reports. What makes it worth testing is the guard: an endpoint that forwards
+// whatever it is handed is an open relay into any Sentry account, paid for by
+// this worker's quota.
+describe("POST /monitoring", () => {
+  const INGEST = "o4509197991346176.ingest.de.sentry.io"
+  const PROJECT = "4511832531796048"
+
+  const envelope = (dsn: string) =>
+    `${JSON.stringify({ event_id: "abc", dsn })}\n{"type":"event"}\n{}`
+
+  const tunnel = (body: string) =>
+    SELF.fetch(`${BASE}/monitoring`, {
+      method: "POST",
+      headers: { "content-type": "application/x-sentry-envelope" },
+      body,
+    })
+
+  it("refuses an envelope addressed to another project", async () => {
+    const response = await tunnel(
+      envelope(`https://key@${INGEST}/9999999999999999`)
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it("refuses an envelope addressed to another host", async () => {
+    const response = await tunnel(
+      envelope(`https://key@evil.example/${PROJECT}`)
+    )
+
+    expect(response.status).toBe(403)
+  })
+
+  it("refuses a body that is not an envelope", async () => {
+    expect((await tunnel("not an envelope")).status).toBe(400)
+  })
+
+  it("refuses an envelope whose header carries no dsn", async () => {
+    const response = await tunnel(`${JSON.stringify({ event_id: "abc" })}\n{}`)
+
+    expect(response.status).toBe(400)
+  })
+})

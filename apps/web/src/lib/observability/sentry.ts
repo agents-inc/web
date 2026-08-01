@@ -17,6 +17,12 @@ export const initSentry = () => {
     dsn: env.VITE_SENTRY_DSN,
     environment: import.meta.env.MODE,
 
+    // Sent through our own worker rather than straight to Sentry, because
+    // `*.ingest.sentry.io` is blocked by default in Edge, Safari and Firefox —
+    // not just by extensions. Derived from the API URL rather than configured
+    // separately, so there is no way to point the two at different places.
+    tunnel: `${env.VITE_API_URL}/monitoring`,
+
     // Explicit rather than default. The configurator is one page with no
     // login, so replay and profiling would spend bundle and quota recording
     // someone clicking a grid; stack traces and breadcrumbs are the value.

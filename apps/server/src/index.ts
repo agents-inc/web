@@ -81,6 +81,12 @@ app.use(
   "/configs",
   cors({ origin: (origin, c) => (origin === c.env.WEB_ORIGIN ? origin : null) })
 )
+// The tunnel is called cross-origin from the web app, and an envelope's
+// content type is not CORS-safelisted, so it preflights like the rest.
+app.use(
+  "/monitoring",
+  cors({ origin: (origin, c) => (origin === c.env.WEB_ORIGIN ? origin : null) })
+)
 
 // Refused on the declared length alone — bodies without one parse as usual and
 // the JSON validator rejects anything that is not a payload anyway.
@@ -137,6 +143,73 @@ app.openapi(getConfigRoute, async (c) => {
   return c.json(JSON.parse(stored), 200, {
     "cache-control": `public, max-age=${YEAR_SECONDS}, immutable`,
   })
+})
+
+// ── Sentry tunnel ────────────────────────────────────────────────────────
+//
+// Browsers block `*.ingest.sentry.io` by default — not only via extensions
+// but through Edge's Tracking Prevention, Safari's ITP and Firefox's ETP. A
+// site whose users are developers loses a large and self-selecting share of
+// its error reports that way, which is worse than losing all of them: what
+// survives looks authoritative and is not.
+//
+// Relaying through this worker makes the request same-site, so there is
+// nothing for a blocklist to match. Sentry documents the SDK half (`tunnel`)
+// but hosts nothing, so the endpoint is ours to write.
+//
+// The envelope's first line is a JSON header carrying the DSN it was built
+// for. Checking it against the one project this worker serves is what stops
+// the route being an open relay into anyone's Sentry account.
+const tunnelRoute = createRoute({
+  method: "post",
+  path: "/monitoring",
+  operationId: "tunnelEnvelope",
+  tags: ["Monitoring"],
+  request: {
+    body: {
+      content: { "application/x-sentry-envelope": { schema: z.string() } },
+      required: true,
+    },
+  },
+  responses: {
+    200: { description: "Relayed to Sentry" },
+    400: { description: "Not a readable envelope" },
+    403: { description: "Envelope is addressed to another project" },
+  },
+})
+
+app.openapi(tunnelRoute, async (c) => {
+  const envelope = await c.req.text()
+
+  const headerEnd = envelope.indexOf("\n")
+  if (headerEnd === -1) return c.text("Not a readable envelope", 400)
+
+  let dsn: URL
+  try {
+    const header = JSON.parse(envelope.slice(0, headerEnd)) as { dsn?: string }
+    if (!header.dsn) return c.text("Envelope carries no DSN", 400)
+    dsn = new URL(header.dsn)
+  } catch {
+    return c.text("Not a readable envelope", 400)
+  }
+
+  // The DSN's path is `/<projectId>`.
+  const projectId = dsn.pathname.slice(1)
+  if (
+    dsn.hostname !== c.env.SENTRY_INGEST_HOST ||
+    projectId !== c.env.SENTRY_PROJECT_ID
+  ) {
+    return c.text("Envelope is addressed to another project", 403)
+  }
+
+  const upstream = await fetch(
+    `https://${c.env.SENTRY_INGEST_HOST}/api/${projectId}/envelope/`,
+    { method: "POST", body: envelope }
+  )
+
+  // The browser has nothing to do with Sentry's response body, and forwarding
+  // it would only widen what this route can be used to probe.
+  return new Response(null, { status: upstream.status })
 })
 
 // Named for build-time OpenAPI spec generation; default for the Workers runtime.
