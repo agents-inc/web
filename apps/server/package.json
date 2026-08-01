@@ -8,7 +8,6 @@
     "deploy": "wrangler deploy --env production",
     "cf-typegen": "wrangler types",
     "lint": "eslint",
-    "format": "prettier --write \"**/*.ts\"",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest"

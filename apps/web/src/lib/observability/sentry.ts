@@ -38,6 +38,7 @@ export const initSentry = () => {
   setReportingSink({
     issue: (message, context) =>
       Sentry.captureMessage(message, { level: "warning", extra: context }),
-    error: (error, context) => Sentry.captureException(error, { extra: context }),
+    error: (error, context) =>
+      Sentry.captureException(error, { extra: context }),
   })
 }

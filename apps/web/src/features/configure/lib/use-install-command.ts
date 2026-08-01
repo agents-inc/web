@@ -14,9 +14,7 @@ const COPIED_DECAY_MS = 2_000
 const BASE_COMMAND = "npx agents-inc init"
 
 export type InstallCommand =
-  | { status: "minting" }
-  | { status: "ready"; id: string }
-  | { status: "failed" }
+  { status: "minting" } | { status: "ready"; id: string } | { status: "failed" }
 
 // What was minted, and for which configuration. Storing the key alongside the
 // result is what lets both `command` and `copied` be *derived* rather than

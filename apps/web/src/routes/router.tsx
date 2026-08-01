@@ -6,11 +6,7 @@ import {
 } from "@tanstack/react-router"
 
 import { ConfigureScreen } from "@/features/configure/components/configure-screen"
-import {
-  DocsScreen,
-  RootLayout,
-  SettingsScreen,
-} from "./route-components"
+import { DocsScreen, RootLayout, SettingsScreen } from "./route-components"
 import { CONFIGURE_SEARCH_DEFAULTS, configureSearchSchema } from "./search"
 
 const rootRoute = createRootRoute({ component: RootLayout })

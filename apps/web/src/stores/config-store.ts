@@ -425,7 +425,11 @@ export const useConfigStore = create<ConfigState>()(
           pins: { ...state.pins, [agentId]: !isAgentOn(state, agentId) },
         }))
 
-        track({ name: "agent_pinned", agentId, on: get().pins[agentId] ?? false })
+        track({
+          name: "agent_pinned",
+          agentId,
+          on: get().pins[agentId] ?? false,
+        })
       },
 
       importConfig: (config) => {

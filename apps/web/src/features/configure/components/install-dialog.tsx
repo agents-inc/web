@@ -119,10 +119,7 @@ export function InstallDialog({
   }, [open])
 
   return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => !open && setDialog("none")}
-    >
+    <Dialog open={open} onOpenChange={(open) => !open && setDialog("none")}>
       <DialogContent wide>
         <DialogHeader
           title="Install"

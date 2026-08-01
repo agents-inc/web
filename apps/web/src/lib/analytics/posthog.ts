@@ -42,5 +42,7 @@ export const initAnalytics = async () => {
     disable_surveys: true,
   })
 
-  setAnalyticsSink(({ name, ...properties }) => posthog.capture(name, properties))
+  setAnalyticsSink(({ name, ...properties }) =>
+    posthog.capture(name, properties)
+  )
 }

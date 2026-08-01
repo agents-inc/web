@@ -9,5 +9,7 @@ bun.lock
 packages/matrix/src/vendor/
 packages/matrix/src/generated/
 apps/web/src/lib/skill-icons.ts
+# Emitted by `wrangler types`; regenerating it would undo any reformatting anyway.
+apps/server/worker-configuration.d.ts
 test-results/
 playwright-report/

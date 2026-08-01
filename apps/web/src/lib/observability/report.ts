@@ -12,7 +12,8 @@ export type ReportingSink = {
 }
 
 const consoleSink: ReportingSink = {
-  issue: (message, context) => console.warn(`[issue] ${message}`, context ?? {}),
+  issue: (message, context) =>
+    console.warn(`[issue] ${message}`, context ?? {}),
   error: (error, context) => console.error(error, context ?? {}),
 }
 

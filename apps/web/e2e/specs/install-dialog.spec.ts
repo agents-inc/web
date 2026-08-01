@@ -56,15 +56,11 @@ test.describe("install dialog", () => {
   })
 
   test("copies the full command, id included", async ({ configure, page }) => {
-    await configure.installDialog
-      .command("npx agents-inc init")
-      .click()
+    await configure.installDialog.command("npx agents-inc init").click()
 
     await expect(configure.installDialog.root).toContainText("copied")
 
-    const clipboard = await page.evaluate(() =>
-      navigator.clipboard.readText()
-    )
+    const clipboard = await page.evaluate(() => navigator.clipboard.readText())
     expect(clipboard).toBe(`npx agents-inc init ${STORED_ID}`)
   })
 
