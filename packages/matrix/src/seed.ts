@@ -1,8 +1,8 @@
 import { z } from "zod"
 
 // The wire contract for shared configs: the web app POSTs this payload to the
-// config store (Cloudflare Worker + KV) and gets a short id back; `agentsinc
-// init <id>` fetches and validates it with this same schema. Canonical home is
+// config store (Cloudflare Worker + KV) and gets a short id back; `agents-inc
+// init --from <id>` fetches and validates it with this same schema. Canonical home is
 // the CLI's shared package once that exists (D-239); until then this file is
 // the source of truth and the CLI vendors it.
 

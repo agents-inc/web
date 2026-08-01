@@ -257,6 +257,6 @@ approval** rather than mis-scoped — `agents-inc` owns the target repo, and org
 
 - Seed the web UI from an existing project (`edit --ui` round trip). **The install dialog's footer
   already advertises `npx agents-inc edit --ui`** — either that exists or the line should come out.
-- `agentsinc share`: map an installed `ProjectConfig` to a `SeedPayload` and POST it to the same
+- `agents-inc share`: map an installed `ProjectConfig` to a `SeedPayload` and POST it to the same
   endpoint, so the CLI can mint ids too. Until then only the web creates them — an accepted
   pre-release limitation; the endpoint itself is client-agnostic.
