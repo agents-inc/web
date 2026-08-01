@@ -20,7 +20,9 @@
         "VITE_SENTRY_DSN",
         "SENTRY_AUTH_TOKEN",
         "SENTRY_ORG",
-        "SENTRY_PROJECT"
+        "SENTRY_PROJECT",
+        "VITE_POSTHOG_KEY",
+        "VITE_POSTHOG_HOST"
       ],
       "outputs": [
         "dist/**"

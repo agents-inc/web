@@ -8,6 +8,7 @@ import { create } from "zustand"
 import { persist } from "zustand/middleware"
 
 import { defaultAssignmentsFor } from "@/features/configure/lib/default-assignments"
+import { track } from "@/lib/analytics/track"
 import { reportIssue } from "@/lib/observability/report"
 import { useAddedSkillsStore } from "./added-skills-store"
 import {
@@ -318,6 +319,13 @@ export const useConfigStore = create<ConfigState>()(
         // Whatever was pulsing belonged to the selection being replaced.
         useUiStore.getState().clearFlash()
 
+        // Emitted from the actions rather than the components because these
+        // are the app's verbs: one `toggleSkill` covers the cell, the stack
+        // swap and the restore, where the components are three call sites that
+        // would each have to remember. `track` imports no vendor, so this
+        // costs the store nothing it did not already have.
+        track({ name: "stack_applied", stackId })
+
         if (stackId === null) {
           set({ ...EMPTY })
           return
@@ -352,20 +360,49 @@ export const useConfigStore = create<ConfigState>()(
         // rather than recomputed, so a restored entry flashes what it restored.
         const reached = selecting ? get().skills[skillId] : undefined
         useUiStore.getState().flashAgents(liveAgentIds(reached))
+
+        // Read back rather than assumed: the catalog guard can refuse the
+        // toggle outright, and an event for a selection that never happened
+        // is worse than no event at all.
+        const nowSelected = skillId in get().skills
+        if (nowSelected !== selecting) return
+
+        track({
+          name: "skill_toggled",
+          skillId,
+          // Session-added skills have no catalog entry and so no domain.
+          domainId: CATALOG.skillsById[skillId]?.domainId ?? "added",
+          selected: nowSelected,
+        })
       },
 
-      setSkillOption: (skillId, patch) =>
+      setSkillOption: (skillId, patch) => {
         set((state) =>
           configure(state, skillId, (entry) => ({ ...entry, ...patch }))
-        ),
+        )
 
-      cycleAssignment: (skillId, agentId) =>
+        // One event per field, so "does anyone ever leave the defaults" is a
+        // question the data can answer per segment rather than in aggregate.
+        for (const [field, value] of Object.entries(patch)) {
+          track({
+            name: "skill_configured",
+            skillId,
+            field,
+            value: String(value),
+          })
+        }
+      },
+
+      cycleAssignment: (skillId, agentId) => {
         set((state) =>
           configure(state, skillId, (entry) => ({
             ...entry,
             assignments: cycled(entry.assignments, agentId),
           }))
-        ),
+        )
+
+        track({ name: "assignment_cycled", skillId, agentId })
+      },
 
       toggleAssignmentEnabled: (skillId, agentId) =>
         set((state) =>
@@ -383,14 +420,24 @@ export const useConfigStore = create<ConfigState>()(
           }))
         ),
 
-      toggleAgentPin: (agentId) =>
+      toggleAgentPin: (agentId) => {
         set((state) => ({
           pins: { ...state.pins, [agentId]: !isAgentOn(state, agentId) },
-        })),
+        }))
+
+        track({ name: "agent_pinned", agentId, on: get().pins[agentId] ?? false })
+      },
 
       importConfig: (config) => {
         useUiStore.getState().clearFlash()
         set({ ...config })
+
+        // Arrivals via a share link are a distinct cohort — they did not build
+        // this configuration, so their funnel starts partway through.
+        track({
+          name: "config_imported",
+          skillCount: Object.keys(config.skills).length,
+        })
       },
 
       reset: () => {

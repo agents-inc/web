@@ -23,13 +23,29 @@ export const envSchema = z.object({
     (value) => (value === "" ? undefined : value),
     z.url().optional()
   ),
+
+  // Optional for the same reasons, and folded the same way. Absent means
+  // PostHog is never even downloaded — see `lib/analytics/posthog.ts`.
+  VITE_POSTHOG_KEY: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.string().min(1).optional()
+  ),
+  // Region-specific (`https://eu.i.posthog.com` or `https://us.i.posthog.com`)
+  // and meaningless without a key, so it carries the US default rather than
+  // being a second thing to remember.
+  VITE_POSTHOG_HOST: z.preprocess(
+    (value) => (value === "" ? undefined : value),
+    z.url().default("https://us.i.posthog.com")
+  ),
 })
 
 export type Env = z.infer<typeof envSchema>
 
+// Partial, not Env: this covers only what dev needs supplied. Anything the
+// schema already defaults for itself does not belong here twice.
 const DEV_DEFAULTS = {
   VITE_API_URL: "http://localhost:8787",
-} as const satisfies Env
+} as const satisfies Partial<Env>
 
 // `bun dev` needs no setup; a production build must state everything.
 export const parseEnv = (

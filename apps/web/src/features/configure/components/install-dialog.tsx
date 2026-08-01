@@ -15,11 +15,14 @@ import {
   DialogRule,
 } from "@workspace/ui/components/dialog"
 
+import { useEffect } from "react"
+
 import {
   selectInstallInventory,
   summarize,
   type InventorySkill,
 } from "@/features/configure/lib/derive"
+import { track } from "@/lib/analytics/track"
 import type { AddedSkill } from "@/stores/added-skills-store"
 import type { ConfigSelection } from "@/features/configure/lib/derive"
 import { useUiStore } from "@/stores/ui-store"
@@ -86,9 +89,26 @@ export function InstallDialog({
   const stats = summarize(config)
   const stack = STACKS.find((candidate) => candidate.id === config.stackId)
 
+  // The end of the funnel. There is no Install button to click — installing
+  // is a CLI action — so reaching this dialog is the furthest the web app can
+  // observe someone getting, and the size of the configuration they got there
+  // with is what makes the drop-off before it readable.
+  const open = dialog === "install"
+  useEffect(() => {
+    if (!open) return
+
+    track({
+      name: "install_opened",
+      skillCount: stats.skillCount,
+      agentCount: stats.agentCount,
+    })
+    // Only the transition to open matters; the counts are a snapshot of it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open])
+
   return (
     <Dialog
-      open={dialog === "install"}
+      open={open}
       onOpenChange={(open) => !open && setDialog("none")}
     >
       <DialogContent wide>

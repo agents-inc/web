@@ -13,6 +13,7 @@ import { Input } from "@workspace/ui/components/input"
 import { LatticeRow, LatticeRows } from "@workspace/ui/components/lattice"
 import { useEffect, useState, type ReactNode } from "react"
 
+import { track } from "@/lib/analytics/track"
 import {
   abbreviateLanguage,
   formatStars,
@@ -111,6 +112,14 @@ export function AddSkillDialog() {
             ? { query: trimmed, repos: result.repos, error: null }
             : { query: trimmed, repos: [], error: result.error }
         )
+
+        // The count, never the query. A search that returns nothing is
+        // someone asking the catalog for a skill it does not have, which is
+        // the closest thing here to a feature request — but the words they
+        // typed are theirs, and are the one free-text field in the app.
+        if (result.ok) {
+          track({ name: "skill_searched", resultCount: result.repos.length })
+        }
       })
     }, DEBOUNCE_MS)
 
@@ -138,6 +147,11 @@ export function AddSkillDialog() {
 
   const commit = () => {
     addSkills(staged)
+    // Repository names, which are public by definition — this is what the
+    // catalog is missing, in the words of the people reaching outside it.
+    for (const skill of staged) {
+      track({ name: "skill_added", fullName: skill.id })
+    }
     close()
   }
 

@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react"
 
 import { SkillIcon } from "@/components/skill-icon"
 import type { SkillCellView } from "@/features/configure/lib/derive"
+import { track } from "@/lib/analytics/track"
 import { freshEntry, useConfigStore } from "@/stores/config-store"
 import { useUiStore } from "@/stores/ui-store"
 import { SkillOptionsPanel } from "./skill-options-panel"
@@ -55,7 +56,21 @@ export function SkillCell({
   // •••, and both badges all funnel into `toggleSkill`, so each entry point
   // has to check. The cell stays hoverable so its reason can be read.
   const select = () => {
-    if (!incompatible) toggleSkill(skill.id)
+    // The refusal is the interesting half. A click here means the 40% dim
+    // read as "broken" rather than "unavailable", and it is the only direct
+    // evidence there is for the catalog's unaudited relationships. It cannot
+    // be emitted from the store, because the whole point is that the store is
+    // never reached.
+    if (incompatible) {
+      track({
+        name: "skill_blocked",
+        skillId: skill.id,
+        reason: view.incompatibleReason ?? "unknown",
+      })
+      return
+    }
+
+    toggleSkill(skill.id)
   }
 
   // The ••• and the badges configure a skill; they never select one. On an

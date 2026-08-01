@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react"
 
+import { track } from "@/lib/analytics/track"
 import { createSharedConfig } from "@/lib/api/configs"
 import { toSeedPayload } from "./seed"
 
@@ -31,6 +32,8 @@ export const useShareLink = (config: ConfigSelection) => {
     setState("sharing")
 
     const result = await createSharedConfig(toSeedPayload(config))
+    track({ name: "share_result", ok: result.ok })
+
     if (!result.ok) {
       setState("failed")
       return
