@@ -361,7 +361,19 @@ export function RosterPanel({
           const shut = collapsed[group.domainId] ?? false
 
           return (
-            <section key={group.domainId}>
+            // `display: contents` is doing real work here, not tidying.
+            // `position: sticky` is confined to its containing block, so while
+            // this <section> generated a box each band could only stay pinned
+            // while its own group was on screen: the previous domain vanished
+            // the moment the next one pinned, and since band N pins at N ×
+            // band-height, the strip above it was left uncovered with rows
+            // scrolling through the gap — which reads as the band sitting
+            // *under* the content. One cause, both symptoms.
+            //
+            // Removing the box makes the scroll container their shared
+            // containing block, so they stack. The element stays because it is
+            // what groups a band with its agents in the DOM.
+            <section className="contents" key={group.domainId}>
               {/* 26px unfilled band, hairline top and bottom, pinned at
                   index × 26px so collapsed headers stack flush. */}
               <button

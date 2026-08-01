@@ -203,4 +203,37 @@ test.describe("roster panel", () => {
       configure.roster.loadWord(STACK_MEMBER_SKILL, "web-developer")
     ).toHaveText(/^(pre|lazy)$/)
   })
+
+  // Regression: each band used to sit in its own <section>, which is the
+  // containing block `position: sticky` is confined to — so a band could only
+  // stay pinned while its own group was on screen. The previous domain
+  // vanished as the next one pinned, and since band N pins at N x band-height,
+  // the strip above it was left uncovered with rows scrolling through it,
+  // which read as the band sitting under the content.
+  test("domain bands stack rather than replace each other", async ({
+    configure,
+    page,
+  }) => {
+    // A stack fills every agent with skill rows, which is what makes the rail
+    // tall enough to scroll at all — with nothing selected it never overflows.
+    await configure.chooseStack(STACKS.nextjs)
+
+    const rail = page.locator("aside .rail-scrollbar")
+    const bands = page.locator("aside .rail-scrollbar button[aria-expanded]")
+
+    const total = await bands.count()
+    const step = (await bands.first().boundingBox())!.height
+    const railTop = (await rail.boundingBox())!.y
+
+    await rail.evaluate((el) => el.scrollTo(0, el.scrollHeight))
+
+    // Every band pinned flush at its own offset, none pushed out by the next.
+    for (let index = 0; index < total; index++) {
+      await expect
+        .poll(async () => (await bands.nth(index).boundingBox())!.y, {
+          message: `band ${index} should pin at ${index} x ${step}px`,
+        })
+        .toBeCloseTo(railTop + index * step, 0)
+    }
+  })
 })

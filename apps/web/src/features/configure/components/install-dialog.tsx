@@ -22,7 +22,17 @@ import {
   summarize,
   type InventorySkill,
 } from "@/features/configure/lib/derive"
+import { useInstallCommand } from "@/features/configure/lib/use-install-command"
 import { track } from "@/lib/analytics/track"
+
+// The line under the command, which is also where the id's absence is
+// explained rather than left as a silently shorter command.
+const COMMAND_NOTES = {
+  minting: "preparing your id",
+  ready: "click to copy",
+  failed: "id unavailable — this command starts a fresh wizard",
+  copied: "copied",
+} as const
 import type { AddedSkill } from "@/stores/added-skills-store"
 import type { ConfigSelection } from "@/features/configure/lib/derive"
 import { useUiStore } from "@/stores/ui-store"
@@ -94,6 +104,8 @@ export function InstallDialog({
   // observe someone getting, and the size of the configuration they got there
   // with is what makes the drop-off before it readable.
   const open = dialog === "install"
+
+  const { command, copied, copy } = useInstallCommand(config, open)
   useEffect(() => {
     if (!open) return
 
@@ -207,7 +219,39 @@ export function InstallDialog({
                   </em>
                   .
                 </p>
-                <CommandBlock>npx agents-inc install</CommandBlock>
+                {/* The id is what carries this configuration to the CLI, so
+                    it is the one part of the command the user did not already
+                    know — amber, per rule 4, marks what they chose. */}
+                <CommandBlock
+                  copyable
+                  role="button"
+                  tabIndex={0}
+                  aria-label={
+                    command.status === "ready"
+                      ? `Copy npx agents-inc init ${command.id}`
+                      : "Copy npx agents-inc init"
+                  }
+                  onClick={() => void copy()}
+                  onKeyDown={(event) => {
+                    if (event.key !== "Enter" && event.key !== " ") return
+                    event.preventDefault()
+                    void copy()
+                  }}
+                >
+                  npx agents-inc init
+                  {command.status === "ready" && (
+                    <span className="text-brand-ink"> {command.id}</span>
+                  )}
+                </CommandBlock>
+                {/* Always rendered so the block never shifts under the cursor
+                    the moment it is clicked. */}
+                <p
+                  className={`pt-1.5 font-mono text-8 font-medium tracking-[.13em] uppercase ${
+                    copied ? "text-brand-ink" : "text-muted-foreground"
+                  }`}
+                >
+                  {COMMAND_NOTES[copied ? "copied" : command.status]}
+                </p>
               </div>
             </div>
           </div>

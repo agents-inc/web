@@ -117,7 +117,13 @@ app.openapi(createConfigRoute, async (c) => {
   const id = await contentAddress(body)
 
   try {
-    await c.env.CONFIGS.put(id, body)
+    // Content-addressed, so a key that exists already holds byte-identical
+    // content: re-writing it would spend one of the free tier's 1000 daily
+    // writes to store what is already there. Reads are 100x more plentiful,
+    // and that asymmetry is what makes minting an id every time the install
+    // dialog opens affordable — fifty opens of one config cost a single write.
+    const existing = await c.env.CONFIGS.get(id)
+    if (existing === null) await c.env.CONFIGS.put(id, body)
   } catch (error) {
     logKvFailure("put", error)
     return c.text("Could not store this config", 503)

@@ -17,7 +17,7 @@ export function RootLayout() {
   )
 }
 
-// Docs, Share and Settings are deliberately undesigned — routes exist, content does not.
+// Docs and Settings are deliberately undesigned — routes exist, content does not.
 function Placeholder({ title }: { title: string }) {
   return (
     <main className="col-span-2 grid h-svh place-items-center bg-column">
@@ -30,10 +30,6 @@ function Placeholder({ title }: { title: string }) {
 
 export function DocsScreen() {
   return <Placeholder title="Docs" />
-}
-
-export function ShareScreen() {
-  return <Placeholder title="Share" />
 }
 
 export function SettingsScreen() {

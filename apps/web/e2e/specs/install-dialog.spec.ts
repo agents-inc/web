@@ -5,12 +5,18 @@ import {
   STACKS,
   STACK_MEMBER_SKILL,
 } from "../support/catalog"
+import { STORED_ID, stubCreateConfig } from "../support/sharing"
 
 const { web } = DOMAINS
 const { name: CATEGORY, first: REACT } = EXCLUSIVE_CATEGORY
 
 test.describe("install dialog", () => {
-  test.beforeEach(async ({ configure }) => {
+  test.use({ permissions: ["clipboard-read", "clipboard-write"] })
+
+  test.beforeEach(async ({ configure, page }) => {
+    // Opening the dialog mints an id for the command, so the worker has to be
+    // answering before the dialog is opened.
+    await stubCreateConfig(page)
     await configure.chooseStack(STACKS.nextjs)
     await configure.roster.installButton.click()
     await expect(configure.installDialog.root).toBeVisible()
@@ -36,8 +42,30 @@ test.describe("install dialog", () => {
       configure.installDialog.command("cd ~/code/your-project")
     ).toBeVisible()
     await expect(
-      configure.installDialog.command("npx agents-inc install")
+      configure.installDialog.command("npx agents-inc init")
     ).toBeVisible()
+  })
+
+  // The id is what carries this configuration to the CLI; without it the
+  // command would start a fresh wizard and silently discard everything the
+  // user just chose.
+  test("appends the minted id to the init command", async ({ configure }) => {
+    await expect(
+      configure.installDialog.command(`npx agents-inc init ${STORED_ID}`)
+    ).toBeVisible()
+  })
+
+  test("copies the full command, id included", async ({ configure, page }) => {
+    await configure.installDialog
+      .command("npx agents-inc init")
+      .click()
+
+    await expect(configure.installDialog.root).toContainText("copied")
+
+    const clipboard = await page.evaluate(() =>
+      navigator.clipboard.readText()
+    )
+    expect(clipboard).toBe(`npx agents-inc init ${STORED_ID}`)
   })
 
   // Installing is a CLI action, so the only button is Close.
@@ -60,6 +88,10 @@ test.describe("install dialog", () => {
 
 // The agents pane follows the derived on/off state, pins included.
 test.describe("install dialog with pins", () => {
+  test.beforeEach(async ({ page }) => {
+    await stubCreateConfig(page)
+  })
+
   test("a pinned bare agent is listed as a base agent", async ({
     configure,
   }) => {

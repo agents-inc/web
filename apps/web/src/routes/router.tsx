@@ -10,7 +10,6 @@ import {
   DocsScreen,
   RootLayout,
   SettingsScreen,
-  ShareScreen,
 } from "./route-components"
 import { CONFIGURE_SEARCH_DEFAULTS, configureSearchSchema } from "./search"
 
@@ -30,12 +29,6 @@ const docsRoute = createRoute({
   component: DocsScreen,
 })
 
-const shareRoute = createRoute({
-  getParentRoute: () => rootRoute,
-  path: "/share",
-  component: ShareScreen,
-})
-
 const settingsRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/settings",
@@ -45,7 +38,6 @@ const settingsRoute = createRoute({
 const routeTree = rootRoute.addChildren([
   configureRoute,
   docsRoute,
-  shareRoute,
   settingsRoute,
 ])
 

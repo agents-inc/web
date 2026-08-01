@@ -10,14 +10,21 @@ import { cn } from "@workspace/ui/lib/utils"
 // outside the `<code>` so selecting the line copies only the command.
 function CommandBlock({
   className,
+  copyable = false,
   children,
   ...props
-}: ComponentProps<"div">) {
+}: ComponentProps<"div"> & {
+  // Whole-block click-to-copy. A prop rather than classes at the call site,
+  // so the affordance cannot drift between the blocks that have it.
+  copyable?: boolean
+}) {
   return (
     <div
       data-slot="command-block"
+      data-copyable={copyable || undefined}
       className={cn(
         "border border-hairline bg-code px-[0.6875rem] py-[0.5rem] font-mono text-11_5 font-medium text-ink",
+        copyable && "cursor-pointer hover:border-rule",
         className
       )}
       {...props}

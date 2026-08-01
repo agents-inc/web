@@ -5,7 +5,6 @@ import { CONFIGURE_SEARCH_DEFAULTS } from "@/routes/search"
 // Only Configure validates search params, so it is the one link that has to
 // supply them; the others would be a type error if they did.
 const NAV_ITEMS = [
-  { to: "/share", label: "Share" },
   { to: "/docs", label: "Docs" },
   { to: "/settings", label: "Settings" },
 ] as const
