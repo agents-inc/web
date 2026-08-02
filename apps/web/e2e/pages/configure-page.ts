@@ -6,6 +6,11 @@ import { SkillCell } from "./skill-cell"
 
 const CONFIGURE_URL = "/"
 
+// The saved snapshot's cell. The app names this one rather than the generated
+// catalogue, so it lives here beside the grid rather than in
+// `support/catalog.ts` — no amount of catalog drift can move it.
+export const SAVED_STACK = "Saved stack"
+
 // The Configure screen. Composed of smaller objects rather than holding every
 // locator itself — a skill cell and the options panel each have enough surface
 // to be worth their own file.
@@ -59,6 +64,18 @@ export class ConfigurePage {
     await this.stack(name).click()
   }
 
+  // The saved snapshot behaves like a stack, so it is located like one.
+  get savedStack(): Locator {
+    return this.stack(SAVED_STACK)
+  }
+
+  // Where a cell sits is part of the contract for the saved snapshot — it takes
+  // the slot straight after scratch — so cells are reachable by position as
+  // well as by name.
+  stackCell(index: number): Locator {
+    return this.stacks.locator('[data-slot="lattice-cell"]').nth(index)
+  }
+
   // The labelled section dividers. The second carries the instructional copy.
   hinge(label: string): Locator {
     return this.page.locator('[data-slot="hinge"]').filter({ hasText: label })
@@ -68,6 +85,13 @@ export class ConfigurePage {
 
   chip(name: string): Locator {
     return this.page.getByRole("button", { name, exact: true })
+  }
+
+  // The bar's own full-bleed wrapper — the element that sticks, and the one
+  // that takes the dark band once it does. Reached up from the search input
+  // rather than by class, the same way `domainHeader` reaches its row.
+  get filterBar(): Locator {
+    return this.searchInput.locator("../../..")
   }
 
   async search(term: string) {

@@ -9,26 +9,41 @@ import {
   AlertDialogHeader,
 } from "@workspace/ui/components/alert-dialog"
 
+import { useApplyStackRequest } from "@/features/configure/lib/use-apply-stack-request"
 import { useConfigStore } from "@/stores/config-store"
-import { useUiStore } from "@/stores/ui-store"
+import { SAVED_STACK_NAME } from "@/stores/saved-stack-store"
+import { useUiStore, type StackRequest } from "@/stores/ui-store"
+
+// The name in the question. The saved snapshot names itself, since no
+// catalogue entry describes it.
+const targetNameOf = (request: StackRequest) => {
+  if (request.kind === "saved") return SAVED_STACK_NAME
+  if (request.stackId === null) return "Start from scratch"
+
+  return (
+    STACKS.find((stack) => stack.id === request.stackId)?.name ?? "this stack"
+  )
+}
 
 // Applying a stack replaces every selection and assignment wholesale, so it
 // needs confirming once the user has something to lose. `StackGrid` applies
 // directly unless the configuration has been *edited* away from what the
 // current stack produces, so reaching this dialog always means real work is at
-// stake — never merely "a stack is currently applied".
+// stake — never merely "a stack is currently applied". The saved snapshot
+// replaces just as much, so it arrives here by the same route.
 export function StackSwitchDialog() {
-  const pendingStackId = useUiStore((state) => state.pendingStackId)
+  const pending = useUiStore((state) => state.pendingStack)
   const dismiss = useUiStore((state) => state.dismissStackRequest)
-  const applyStack = useConfigStore((state) => state.applyStack)
+  const applyStackRequest = useApplyStackRequest()
   const skillCount = useConfigStore((state) => Object.keys(state.skills).length)
 
-  const open = pendingStackId !== undefined
-  const targetName =
-    pendingStackId === null
-      ? "Start from scratch"
-      : (STACKS.find((stack) => stack.id === pendingStackId)?.name ??
-        "this stack")
+  const open = pending !== null
+  const targetName = pending ? targetNameOf(pending) : ""
+
+  const confirm = () => {
+    if (pending) applyStackRequest(pending)
+    dismiss()
+  }
 
   return (
     <AlertDialog open={open} onOpenChange={(next) => !next && dismiss()}>
@@ -42,14 +57,7 @@ export function StackSwitchDialog() {
         </AlertDialogDescription>
         <AlertDialogFooter>
           <AlertDialogCancel>Keep my setup</AlertDialogCancel>
-          <AlertDialogAction
-            onClick={() => {
-              if (open) applyStack(pendingStackId)
-              dismiss()
-            }}
-          >
-            Switch
-          </AlertDialogAction>
+          <AlertDialogAction onClick={confirm}>Switch</AlertDialogAction>
         </AlertDialogFooter>
       </AlertDialogContent>
     </AlertDialog>

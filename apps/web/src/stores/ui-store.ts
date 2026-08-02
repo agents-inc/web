@@ -7,11 +7,17 @@ import { persistedUiSchema } from "./persisted-schema"
 // prototype's `flashMs` default.
 const FLASH_MS = 2600
 
+// What a confirmed switch would replace the selection with. `null` inside a
+// stack request is "Start from scratch"; the saved snapshot has no catalogue
+// id to travel as, so it says only which slot to read.
+export type StackRequest =
+  { kind: "stack"; stackId: string | null } | { kind: "saved" }
+
 type UiState = {
   // Which skill's ••• options panel is showing. Only one at a time.
   openPanelSkillId: string | null
-  // Stack awaiting confirmation because applying it would discard edits.
-  pendingStackId: string | null | undefined
+  // Switch awaiting confirmation because applying it would discard edits.
+  pendingStack: StackRequest | null
   dialog: "none" | "install" | "add"
   // Domain id → that roster accordion is shut.
   rosterCollapsed: Record<string, boolean>
@@ -20,7 +26,7 @@ type UiState = {
 
   openPanel: (skillId: string | null) => void
   togglePanel: (skillId: string) => void
-  requestStack: (stackId: string | null) => void
+  requestStack: (request: StackRequest) => void
   dismissStackRequest: () => void
   setDialog: (dialog: UiState["dialog"]) => void
   toggleRosterDomain: (domainId: string) => void
@@ -36,7 +42,7 @@ export const useUiStore = create<UiState>()(
   persist(
     (set) => ({
       openPanelSkillId: null,
-      pendingStackId: undefined,
+      pendingStack: null,
       dialog: "none",
       rosterCollapsed: {},
       flashedAgentIds: [],
@@ -47,8 +53,8 @@ export const useUiStore = create<UiState>()(
           openPanelSkillId: state.openPanelSkillId === skillId ? null : skillId,
         })),
 
-      requestStack: (stackId) => set({ pendingStackId: stackId }),
-      dismissStackRequest: () => set({ pendingStackId: undefined }),
+      requestStack: (request) => set({ pendingStack: request }),
+      dismissStackRequest: () => set({ pendingStack: null }),
       setDialog: (dialog) => set({ dialog }),
 
       toggleRosterDomain: (domainId) =>
