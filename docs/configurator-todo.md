@@ -39,6 +39,72 @@ the conflict list, is what is doing that work.
 
 Blocked on the CLI repo reopening; the audit itself runs against the vendored copy any time.
 
+## Sub-agent scope ✅ (2026-08-02)
+
+Where a sub-agent's front-matter gets written is now the web's to say. The CLI carried `scope` on
+every `AgentScopeConfig` all along; with no surface for it the `--from` mapper wrote `project` for
+everyone, so a global agent was unshareable rather than merely unsupported.
+
+- [x] **Store** — the `agents` record gained `scope?: "project" | "global"`. Absent means `project`
+      — the CLI's installer default, not anything `metadata.yaml` names — and the store keeps only
+      the non-resting choice, the same drop-on-resting rule model and effort follow. `PERSIST_VERSION`
+      7 → 8.
+- [x] **Roster UI** — a `ScopeWord` on the agent's own row, third in the control cluster after the
+      model word and the effort meter. Two values, so it is a toggle, but it steps through
+      `nextInCycle(AGENT_SCOPES, …)` rather than negating: one rule for all three controls on the
+      row, and a third value later costs nothing.
+- [x] **Wire** — `seedAgentSchema` gained optional `scope`, and `SEED_VERSION` went 2 → 3. The
+      bump-or-not question the item left open is decided **bumped**: additive-optional survives on
+      paper, but the CLI's vendored zod object strips what it does not know, so a v2 id would decode
+      clean and silently drop the field. The version is the only thing that proves it arrived.
+- [x] **CLI tail, in lockstep** — the vendored schema and `agentScopeConfig` landed with it: scope
+      maps through, defaults to `project`, and `compileAgentsAllScopes` splits the compiled agents by
+      it. Live-verified end to end, not just typechecked.
+- [x] **Install dialog** — the Agents pane groups `Project` / `Global`. Its lone `Project` heading was
+      decoration while front-matter went to the project unconditionally; scope is what turns it into
+      the statement the skills pane's headings already were, and `Global` appears only once an agent
+      is.
+- [x] 11 E2E in `agent-scope.spec.ts` — the row control and its resting value, that choosing a scope
+      does not switch the agent on, the per-agent boundary, reload survival, the v3 payload with and
+      without the key, and the dialog grouping.
+
+## Save your stack ✅ (2026-08-02)
+
+A selection now outlives the config state it was built in.
+
+- [x] **Save** in the roster footer, above Share, disabled at zero skills — the same nothing-to-send
+      rule Share follows. The label never moves: the grid cell appearing is the feedback, and a button
+      that renames itself cannot be clicked twice in a row.
+- [x] **Storage** — `toSeedPayload` into its own localStorage slice (`agents-inc:saved-stack:v1`),
+      read back through `seedPayloadSchema`. The same serialization sharing sends, so a saved stack
+      and a shared link can never restore different things. Deliberately not a field of the config
+      store: that one is discarded wholesale on a `PERSIST_VERSION` bump, and a snapshot made on
+      purpose must not go with the browser state it happened to be saved from.
+- [x] **Its own version seam** — the payload's `v`, not `PERSIST_VERSION`. Stricter, and honestly so:
+      a `SEED_VERSION` bump empties the slot **by design**, because a payload minted under an older
+      contract fails to decode rather than being guessed at. An empty slot and an unreadable one give
+      the same answer — there is nothing to restore either way, and nothing on screen to explain it
+      with.
+- [x] **Grid** — the `Saved stack` cell renders straight after "Start from scratch" and only while a
+      snapshot exists; it is drawn as the current stack exactly when the selection _is_ the
+      snapshot. Applying is `fromSeedPayload` through the existing stack-switch confirm, with the
+      same skip-and-report pruning as `--from`.
+- [x] **One dispatch site** — `useApplyStackRequest`. The grid applies directly when there is nothing
+      to lose and the dialog applies once confirmed: two routes to the same dispatch, not two.
+- [x] The three open questions resolved: **one slot** (not a list), **auto-named**, **update-in-place**
+      on re-save.
+- [x] 9 E2E in `save-stack.spec.ts` — the disabled boundary (including a pinned bare agent, which is
+      not enough to save), footer order, the cell's position in the grid, restoring the selection,
+      the confirm over real edits, and re-saving into the one slot.
+- [x] **Applied is a comparison** — the baseline this section left open was decided the same day:
+      a selection equal to the snapshot — just saved, or just applied — is clean, and presses the
+      saved cell while scratch and the catalogue cells stay unpressed. Not by repointing
+      `isStackCustom` but by subtracting from it (`edited && !savedApplied`), so no new state is
+      stored: `matchesSavedStack` compares serialized payloads — the identity `useInstallCommand`
+      keys on — derived on every change and again from whatever rehydrates. Order-sensitive, so a
+      reordered-but-unchanged selection reads as a difference: one confirm too many, never work
+      discarded. 5 E2E in `saved-stack-applied.spec.ts`.
+
 ## Incompatibility ✅ (2026-07-30)
 
 Selecting a skill now rules out what it makes unusable: dimmed to 40% with `aria-disabled`, never
@@ -56,9 +122,10 @@ never leaves its own category and `compatibleWith` claims React is compatible wi
       exclusive sibling is never disabled for conflicting with something **actually selected** in its
       own category — that is the swap. The exemption deliberately does _not_ extend to an implied
       conflict, because clicking the sibling would not evict whatever implies it.
-- [x] Reason strings come from the data: `Conflicts with React`, `Needs Svelte`, `Needs one of Vue,
-    Nuxt`. Carried on `title`, which is also the accessible description — so the cell keeps pointer
-      events rather than `pointer-events-none`, or the reason would be unreachable.
+- [x] Reason strings come from the data: `Conflicts with React`, `Needs Svelte`,
+      `Needs one of Vue, Nuxt`. Carried on `title`, which is also the accessible description — so the
+      cell keeps pointer events rather than `pointer-events-none`, or the reason would be
+      unreachable.
 - [x] 19 unit tests over the derivation, 12 E2E over the drawing and the disabling, and a fixture
       guard in `catalog.spec.ts` so a future re-authoring of the requirement chain fails once, named.
 - Parked: a red outline (`#b0392c`, the amber hue rotated) was built and pulled — dimming alone is
@@ -139,9 +206,9 @@ square, hairline-lattice, mono-labelled, single-amber-accent. Design system firs
 
 ## Testing ✅
 
-- [x] Playwright E2E in `apps/web/e2e` — 77 tests across 9 specs, page objects, a
+- [x] Playwright E2E in `apps/web/e2e` — 177 tests across 17 specs, page objects, a
       GitHub route mock, and `catalog.spec.ts` guarding the fixture values against
-      catalogue drift. Runs in ~15s.
+      catalogue drift. Runs in ~37s.
 - [x] Verified non-vacuous: three regressions injected (router `resetScroll`, the
       stack-confirm condition, exclusive-sibling eviction) each failed exactly the
       tests that name them and nothing else.
@@ -153,8 +220,9 @@ square, hairline-lattice, mono-labelled, single-amber-accent. Design system firs
 - [x] `skill-memory.spec.ts` — 11 tests covering deselect/re-select, exclusive swap, the
       stack-provided case and the boundaries. Verified non-vacuous: disabling `isWorthRemembering`
       fails 7 of them and leaves the 4 that assert the _absence_ of memory passing.
-- [x] Unit tests — 94 across `derive.ts`, `persisted-schema.ts`, the added-skill helpers, the
-      GitHub formatters and the `packages/matrix` read model. Run in ~20ms.
+- [x] Unit tests — 184 across seven files in `apps/web` (`derive.ts`, `persisted-schema.ts`, the
+      seed round-trip, the saved-stack slot, default assignments, the added-skill helpers and the
+      GitHub formatters) plus the `packages/matrix` read model. Run in ~80ms.
 - [x] `packages/vitest-config` — the shared node preset the tracker anticipated
 - [x] Verified non-vacuous: blanking `isStackCustom`'s option comparison and miscounting
       `summarize`'s agents failed exactly the 5 tests naming those behaviours. Only one of the

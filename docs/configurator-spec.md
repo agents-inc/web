@@ -87,20 +87,39 @@ type Assignment = {
 }
 
 type SkillEntry = {
-  model: "opus" | "fable" | "sonnet" | "haiku"
-  effort: "low" | "medium" | "high" | "xhigh" | "max" | "ultra"
   install: "plugin" | "eject"
   scope: "project" | "global"
   assignments: Record<AgentId, Assignment>
+}
+
+// Every decision about one sub-agent, all of it optional. `on` is tri-state:
+// true pins on, false pins off, absent means "ask the assignments" — so an
+// entry holding only a model must not pin.
+type AgentEntry = {
+  on?: boolean
+  model?: "opus" | "fable" | "sonnet" | "haiku"
+  effort?: "low" | "medium" | "high" | "xhigh" | "max"
 }
 
 type ConfigState = {
   stackId: string | null // null = "Start from scratch"
   skills: Partial<Record<SkillId, SkillEntry>> // SPARSE — presence *is* selection
   remembered: Partial<Record<SkillId, SkillEntry>> // deselected, not discarded
-  pins: Partial<Record<AgentId, boolean>> // explicit agent on/off overrides
+  agents: Partial<Record<AgentId, AgentEntry>> // SPARSE — only what was decided
 }
 ```
+
+**Model and effort belong to the sub-agent** (v7). A skill is a plugin from someone else's repo:
+in plugin mode its `SKILL.md` frontmatter belongs to the marketplace and any edit we write is undone
+by the next update, so a per-skill model would have worked in eject mode and silently done nothing
+in plugin mode. The agent file we always generate. They widened `pins` rather than adding a second
+agent-keyed map, because two parallel agent-keyed records drift.
+
+**The agents map holds choices, not state.** There is no single default model: an agent rests on the
+one its own `metadata.yaml` names (`SubAgent.model`, falling back to `sonnet` when that is not one
+of the four the web offers), and effort rests at `medium` for everyone until agent metadata carries
+one. `resolveAgentOptions` is where a row's displayed value comes from; setting a field back to its
+resting value removes the key, and a record left with nothing in it is dropped.
 
 **Selecting assigns automatically.** A fresh selection arrives with the rule's assignments
 (`lib/default-assignments.ts`): the core roles (developer · pm · reviewer · tester) of the
@@ -111,7 +130,7 @@ it holds ≥ 1 enabled skill (`isAgentOn`) — selecting a skill is what switche
 and the roster flashes the agents a selection just reached.
 
 **Deselecting is not destructive.** One click removes a skill; the configuration behind it can be a
-dozen — nine sub-agent assignments, a model, an effort — and the cell gives no warning, because
+dozen — nine sub-agent assignments, an install mode, a scope — and the cell gives no warning, because
 deselect reads as "not included" rather than "erase my work". A deselected entry moves to
 `remembered` and is restored if the skill is selected again.
 
@@ -124,10 +143,12 @@ configured.
 Two boundaries stop this becoming a leak. `isWorthRemembering` drops entries that carry no
 information at all — default options, no assignments — which is what a blank skill selected and
 immediately deselected looks like; note that a stack-applied skill arrives _with_ assignments and so
-is always remembered. And `applyStack` clears the map, because it is the explicit start-over action
-and already confirms first when edits would be lost.
+is always remembered. v7 cost it two of its four signals (model and effort left the skill), so
+deselect-remembers-your-work is deliberately less sensitive than it was: an entry now says something
+only through its assignments or its install options. And `applyStack` clears the map, because it is
+the explicit start-over action and already confirms first when edits would be lost.
 
-Derivations take `ConfigSelection` (`stackId` + `skills`), never `PersistedConfig`. A remembered
+Derivations take `ConfigSelection` (`stackId` + `skills` + `agents`), never `PersistedConfig`. A remembered
 skill must not appear in a grid, a roster line, a count or the install inventory, and excluding it
 at the type level means that cannot happen by accident.
 
@@ -157,8 +178,8 @@ map, the only persisted field) · `flashedAgentIds` (the roster pulse, decays af
 | ---------- | -------------------------------------------------------------------------------------------------------------------------------- |
 | Key        | `agents-inc:config:v1` / `agents-inc:ui:v1`                                                                                      |
 | Validation | `merge` → `safeParse`; on failure **return current** (silent reset, log in dev)                                                  |
-| Stale ids  | `pruneUnknownIds` drops skill/stack/agent ids absent from the regenerated catalog (pins included)                                |
-| Migration  | `PERSIST_VERSION = 5` (v5 adds `pins` + per-assignment `enabled`). Pre-release policy: no migrations — older blobs are discarded |
+| Stale ids  | `pruneUnknownIds` drops skill/stack/agent ids absent from the regenerated catalog (the `agents` map included)                    |
+| Migration  | `PERSIST_VERSION = 7` (v7 moves model/effort off the skill and widens `pins` to `agents`). Pre-release policy: no migrations — older blobs are discarded |
 
 ### URL search params — `/`
 
@@ -207,7 +228,7 @@ map, the only persisted field) · `flashedAgentIds` (the roster pulse, decays af
 | `.../domain-section.tsx`      | Sticky domain title + category groups + skill lattice                                                                                   |
 | `.../skill-cell.tsx`          | The core cell                                                                                                                           |
 | `.../skill-options-panel.tsx` | The `•••` popover                                                                                                                       |
-| `.../roster-panel.tsx`        | Domain accordions (stacking sticky bands), agent pins, per-agent skill rows with load words and the where-used tooltip, Share + Install |
+| `.../roster-panel.tsx`        | Domain accordions (stacking sticky bands), agent pins with their model word + effort meter, per-agent skill rows with load words and the where-used tooltip, Share + Install |
 | `.../install-dialog.tsx`      | Inventory panes + numbered steps                                                                                                        |
 | `.../add-skill-dialog.tsx`    | Staged tray, GitHub search, result lattice                                                                                              |
 | `.../stack-switch-dialog.tsx` | Confirm discard                                                                                                                         |
@@ -285,8 +306,27 @@ the padding — a measured oscillation (`scrollY` jumped 590 → 511). The 60px 
 therefore comes from the preceding hinge's bottom margin, only horizontal padding changes, and the
 border is made transparent rather than removed. Geometry is identical; the feedback loop is gone.
 
-Domain headers re-pin from `top: 87px` to `top: 51px` to follow the bar. The horizontal padding
-transition is the **only** animation in the design.
+**Stuck goes dark (84a).** Only the colour bleeds: the wrapper takes `#242320` full width while its
+contents keep the 60px gutters, so search still starts on the content edge and `＋ add skill` still
+ends on it, and the dark/white seam is what separates the bar from the domain header pinning
+beneath it. Every control on the band inverts with it — the search field loses its box, the chips
+lose their borders and lift on a translucent white wash (amber on `rgba(176,118,44,.22)` when
+chosen), and add-skill drops its fill for a `#55524a` hairline, leaving it the only bordered thing
+on the band.
+
+The inverted styling lives **inside** the primitives (`Input`, `Chip`, `Button`), never in the bar:
+§2's rule is that the app must not restyle a primitive locally. It arrives as an `onDark` variant
+the bar passes, named for the surface rather than for the bar's own state — the primitive has no
+business knowing what "stuck" means, and a prop cannot leak onto the chips and inputs inside the
+dialogs the way a root-attribute selector could.
+
+**Sticking hands focus to the search input.** Reaching the top of the grid is the moment searching
+becomes the obvious thing to do, so the caret is already there. It fires on the false → true
+transition only, never per scroll event, or typing anywhere else on the page would be impossible
+while the bar is pinned.
+
+Domain headers re-pin from `top: 87px` to `top: 51px` to follow the bar. The horizontal padding and
+the background are the **only** animations in the design.
 
 ---
 
@@ -355,7 +395,10 @@ Each of these is a place the design could not be followed literally, with the re
 | **Incompatible cell**            | `.skc.dis{opacity:.4}` — dimmed, and nothing else                                                                                             | The same 40% dim, plus `aria-disabled` and a reason on `title`                                      | The dimming matches the design exactly. What the design has no answer for is _why_ a cell is out, and that a mouse-only signal leaves the state unreadable to anything else — hence the reason and the ARIA state. A red outline was tried and pulled; see the todo.                                                                                                                                                                                           |
 | **Roster footer**                | A single Install button carrying the counts                                                                                                   | Share above Install                                                                                 | Sharing is a shipped feature (Cloudflare KV round trip) with no other surface yet; the design's SHARE nav destination is still an empty shell.                                                                                                                                                                                                                                                                                                                 |
 | **Where-used count/tooltip**     | Prototype counts every row of an installed agent — a switched-off row still appears in other rows' counts and lists (`offs` only recesses it) | Only enabled rows on on-agents count (`liveUsesBySkill`)                                            | The number answers "where else will this actually install"; counting a switched-off copy would contradict the install inventory and summary, which skip it too.                                                                                                                                                                                                                                                                                                |
-| **Model / effort segments**      | `opus · sonnet · haiku`, `none · low · med · high`                                                                                            | `opus · fable · sonnet · haiku`, `low · medium · high · xhigh · max · ultra` — no "off", full words | These are the CLI contract's scales (`packages/matrix/src/seed.ts`, cli-integration.md); the store adopted them at persist v4. Neither segment has an off state — `sonnet` / `medium` are the resting defaults.                                                                                                                                                                                                                                                |
+| **Model / effort on the agent row** | Model word cycling `sonnet · opus · haiku`; a **3**-square effort meter cycling `med · low · high`                                          | Model word cycling `opus · fable · sonnet · haiku`; a **5**-square meter cycling `low · medium · high · xhigh · max`                       | The design's scales are placeholders; these are the CLI contract's (`packages/matrix/src/seed.ts`, cli-integration.md), and the real scale wins over a placeholder exactly as it does for the segments this replaced. Five levels means five squares — a 3-square meter cannot draw `xhigh` apart from `max`. Neither control has an off state: an agent rests on its own `metadata.yaml` model and on `medium`, and cycling back to that resting value clears the choice rather than storing it. |
+| **Both controls sit beside the pin** | The agent's name row is one click target, with both controls inside it                                                                     | Both are **siblings** of the pin button, not children                                                                                       | Nested, they would swallow the click that pins and bury their own values inside the pin's accessible name (`developer` would read as `developer opus effort…`). As siblings each is its own control with its own name, and a click on one cannot reach the pin at all. |
+| **Info affordance on Install scope** | A hinted glyph beside the section label (89a), tip opening right of the glyph (90j)                                                       | A real `<button aria-label="About install scope">`; the tip opens right of the **panel**, mirrored when the panel flips                     | A hinted span is pointer-only; a button is what makes the explanation reachable by keyboard, and the same accessible name serves both. The tip is positioned off the panel rather than the glyph for the same reason the panel itself flips in the last column — anchored to the glyph it would open over the panel's own controls. Revealed on `:focus` rather than `:focus-visible`, so asking for it with the keyboard works whether or not the browser decides a focus ring is warranted. |
+| **Quiet at rest (87a)**          | `pre` / `lazy` and the where-used count fade in while the pointer is over the agent block                                                     | The same, plus focus anywhere inside the block                                                                                              | Keyboard equivalence: the load word is a real button, so it can be tabbed to — and without the focus half it would be reached while still invisible. Opacity, not display, so revealing one cannot reflow the rows beneath it. |
 | **`•••` on an unselected skill** | Panel opens                                                                                                                                   | Panel opens, and the skill stays unselected                                                         | As the design has it. Configuring is not choosing: the `•••` and both badges never select. What they set on an unselected skill goes to `remembered` — the same place a deselected skill's setup goes — so it survives and `select` restores it verbatim. The panel shows `entry ?? remembered ?? freshEntry`, the same three fallbacks the store writes through, so it can never display one thing and save another.                                          |
 | **Agent count opens on hover**   | "Hover/click"                                                                                                                                 | Click only                                                                                          | A hover-opened panel containing interactive controls is hostile to reach. Click is listed in the design too.                                                                                                                                                                                                                                                                                                                                                   |
 | **Panel dismissal**              | Click `•••` again                                                                                                                             | Also outside press and Escape                                                                       | The design does not say, and a popover with no escape hatch is a trap.                                                                                                                                                                                                                                                                                                                                                                                         |

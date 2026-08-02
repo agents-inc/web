@@ -15,12 +15,34 @@ base64 chars, over the ~50-char usability bar. No encoded-blob fallback will be 
 
 ## The contract
 
-`packages/matrix/src/seed.ts` — `SeedPayload` v1, exported from `@workspace/matrix`:
+`packages/matrix/src/seed.ts` — `SeedPayload` v3, exported from `@workspace/matrix`:
 
-- `{ v: 1, matrixVersion, stackId, skills }`; each skill: `model` (opus/fable/sonnet/haiku),
-  `effort` (low/medium/high/xhigh/max/ultra), `install`, `scope`, `assignments` (agent id → lazy/preloaded).
+- `{ v: 3, matrixVersion, stackId, skills, agents }`; each skill: `install` (plugin/eject),
+  `scope` (project/global), `assignments` (agent id → lazy/preloaded). Each agent: `on?`
+  (boolean), `model?` (opus/fable/sonnet/haiku), `effort?` (low/medium/high/xhigh/max), `scope?`
+  (project/global) — all four optional.
+- **v2 moved model and effort off the skill and onto the agent**, and gave agents their own
+  top-level map. **v3 (2026-08-02) added the agent's `scope`** — the CLI has carried one on every
+  `AgentScopeConfig` all along, but with no web surface the `--from` mapper wrote `project` for
+  everyone. Additive-optional, so the bump was not strictly forced; it happened because the CLI's
+  vendored copy of this object strips keys it does not know, which would let a v2 id decode clean and
+  drop the field silently. The version is what proves it arrived.
+- The schema accepts `v: 3` and nothing else: pre-release policy is discard-don't-migrate, so an id
+  minted against v1 or v2 fails to decode loudly rather than being guessed at. Nothing has ever
+  installed from an id, so breaking it is free — and stops being free the moment one does.
+- The `agents` map is sparse, and presence means "installs":
+
+  | Entry                                | Meaning                                                                     |
+  | ------------------------------------ | --------------------------------------------------------------------------- |
+  | `{ on: true }`                       | Pinned on. With no assignments anywhere this is the bare **base agent** — the capability v1 could not express at all, since agents were only ever implied by assignments. |
+  | `{ model?, effort?, scope? }`, no `on` | Switched on by its assignments already; only the overrides travel, because repeating `on` is the one place the payload could contradict itself. A resting `scope` is dropped exactly as a resting model is, so absent means `project` — the CLI's default. |
+  | `on: false`                          | **Never sent.** A pinned-off agent is excluded from every count on the sharer's screen, so neither it nor the assignment rows naming it may travel — the CLI must never install what the sharer's own counts exclude. |
+  | absent                               | Resting on its own `metadata.yaml` model with medium effort and no pin — nothing to say. |
+
 - Ids are full catalog slugs, never indices — payloads survive catalog churn; consumers warn-and-skip
-  unknown ids (same policy as `pruneUnknownIds`). `matrixVersion` is diagnostics only, never a decode gate.
+  unknown ids (same policy as `pruneUnknownIds`, which now prunes the `agents` map too — it is the
+  one place a retired agent can arrive without an assignment). `matrixVersion` is diagnostics only,
+  never a decode gate.
 - `remembered` never leaves the browser.
 - Canonical home is the CLI's shared package once it exists (CLI todo D-239); until then this file is
   the source of truth and the CLI will vendor it.
@@ -47,7 +69,8 @@ contract stops moving, or when a third consumer appears.
 Done:
 
 - [x] Seed schema (`packages/matrix/src/seed.ts`)
-- [x] Store on the contract's scales — persist v4 (model gained `fable`; effort is the six-level scale).
+- [x] Store on the contract's scales — persist v7 (model gained `fable`; effort is the five-level
+      scale, and both now sit on the sub-agent rather than the skill).
       Pre-release policy: no migrations — older persisted blobs are discarded, not upgraded.
 
 - [x] Serializer: `toSeedPayload` (`apps/web/src/features/configure/lib/seed.ts`) — builds the payload
@@ -162,11 +185,15 @@ signal at all — configs created versus configs actually used stays permanently
 Note the GET is served `cache-control: immutable, max-age=1y`, so a re-run may be answered by a
 proxy and never reach the worker. The number undercounts by design; it is a floor, not a census.
 
-## 3. `SkillConfig` gains per-skill `model` and `effort`
+## 3. `AgentScopeConfig` gains `model` and `effort`
 
-The web has emitted both since persist v4 — `model` (opus/fable/sonnet/haiku) and the six-level
-`effort` scale (low/medium/high/xhigh/max/ultra). Until the CLI carries them, half of what a user
-configures is silently dropped on install.
+Per **agent**, not per skill — v2 moved them (proposals §1: in plugin mode a skill's `SKILL.md`
+frontmatter belongs to the marketplace and any model we wrote there would be undone by the next
+update, whereas we always generate the agent file). So `AgentScopeConfig` gains `model?`/`effort?`,
+`agent.schema.json` gains `effort`, the template emits both, and the compiler prefers a config value
+over the `metadata.yaml` default — silently, because a warning on every compile for a deliberate
+setting is noise. Until the CLI carries them, the model and effort a user chose per agent are
+silently dropped on install.
 
 ## 4. Vendor the seed contract, with a drift guard
 
