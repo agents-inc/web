@@ -14,6 +14,12 @@ import { cn } from "@workspace/ui/lib/utils"
 // `chipVariants` is exported for the cases that need the look without the
 // semantics: the stage marker sits inside an already-clickable row, so it must
 // render as a `<span>` rather than nest a button.
+//
+// `onDark` is the 84a stuck filter bar: the surface turns #242320, so the
+// border goes — it is the one thing on the band that keeps none — and the chip
+// reads as ink lifted on a translucent white wash instead. Named for the
+// surface rather than for the bar's own state, so the primitive never has to
+// know why, and so a chip in a dialog can never be caught by it.
 const chipVariants = cva(
   "cursor-pointer border font-mono font-medium whitespace-nowrap uppercase",
   {
@@ -27,13 +33,39 @@ const chipVariants = cva(
         true: "border-brand-border bg-wash text-brand-ink",
         false: "bg-transparent text-muted-foreground hover:border-line-hover",
       },
+      onDark: {
+        true: "border-transparent hover:border-transparent",
+        false: "",
+      },
     },
     compoundVariants: [
-      { size: "filter", active: false, class: "border-chip-border" },
-      { size: "segment", active: false, class: "border-divider" },
-      { size: "stage", active: false, class: "border-chip-border" },
+      {
+        size: "filter",
+        active: false,
+        onDark: false,
+        class: "border-chip-border",
+      },
+      {
+        size: "segment",
+        active: false,
+        onDark: false,
+        class: "border-divider",
+      },
+      {
+        size: "stage",
+        active: false,
+        onDark: false,
+        class: "border-chip-border",
+      },
+      {
+        active: false,
+        onDark: true,
+        class:
+          "bg-band-chip text-band-dim hover:bg-band-chip-hover hover:text-band-hover",
+      },
+      { active: true, onDark: true, class: "bg-band-wash text-band-brand" },
     ],
-    defaultVariants: { size: "filter", active: false },
+    defaultVariants: { size: "filter", active: false, onDark: false },
   }
 )
 
@@ -41,6 +73,7 @@ function Chip({
   className,
   size,
   active,
+  onDark,
   type = "button",
   ...props
 }: ComponentProps<"button"> & VariantProps<typeof chipVariants>) {
@@ -49,7 +82,7 @@ function Chip({
       type={type}
       data-slot="chip"
       aria-pressed={active ?? false}
-      className={cn(chipVariants({ size, active }), className)}
+      className={cn(chipVariants({ size, active, onDark }), className)}
       {...props}
     />
   )

@@ -14,6 +14,11 @@ import { cn } from "@workspace/ui/lib/utils"
 // primary — the confirming footer button (Add N skills)
 // block   — `＋ add skill`, stretched to the filter bar's height
 // full    — `Install`, full width in the roster footer
+//
+// `onDark` is the 84a stuck filter bar: the band around this button is already
+// the ink it is filled with, so the fill goes and a hairline takes over —
+// leaving it the only bordered thing on the band. Named for the surface rather
+// than for the bar's own state, so the primitive never has to know why.
 const buttonVariants = cva(
   "inline-flex shrink-0 cursor-pointer items-center justify-center font-mono font-semibold whitespace-nowrap uppercase outline-none select-none focus-visible:ring-1 focus-visible:ring-ring disabled:pointer-events-none disabled:opacity-40",
   {
@@ -27,20 +32,33 @@ const buttonVariants = cva(
           "bg-ink px-[1.125rem] text-9_5 tracking-[.1em] text-primary-foreground hover:bg-ink-2",
         full: "w-full border-0 bg-ink py-[0.6875rem] text-10 tracking-[.12em] text-primary-foreground hover:bg-ink-2",
       },
+      onDark: {
+        true: "",
+        false: "",
+      },
     },
-    defaultVariants: { variant: "outline" },
+    compoundVariants: [
+      {
+        variant: "block",
+        onDark: true,
+        class:
+          "bg-transparent shadow-[inset_0_0_0_1px_var(--color-band-edge)] hover:bg-transparent hover:shadow-[inset_0_0_0_1px_var(--color-band-edge-hover)]",
+      },
+    ],
+    defaultVariants: { variant: "outline", onDark: false },
   }
 )
 
 function Button({
   className,
   variant = "outline",
+  onDark,
   ...props
 }: ButtonPrimitive.Props & VariantProps<typeof buttonVariants>) {
   return (
     <ButtonPrimitive
       data-slot="button"
-      className={cn(buttonVariants({ variant, className }))}
+      className={cn(buttonVariants({ variant, onDark, className }))}
       {...props}
     />
   )

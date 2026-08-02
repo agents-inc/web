@@ -118,8 +118,29 @@
   --color-roster-hover: #faf8f3; /* agent row hover */
   --color-skill-hover: #fdf9f0; /* skill row hover */
   --color-flash: #f9f1de; /* assignment pulse on newly hit agents */
-  --color-tip-border: #cdc8b8; /* where-used tooltip frame */
   --color-use-ink: #a8a496; /* where-used number at rest */
+  /* The one tooltip surface (89a/90j): flat, no border, no shadow, no accent
+       edge — shared by the where-used popup and the options panel's info tip. */
+  --color-tip-field: #f6f4ed;
+  /* The agent row's effort meter: an empty square's outline, and the fill on
+       an agent that is switched off. A filled square on a live agent is
+       `brand`, so it needs no token of its own. */
+  --color-meter-border: #d5d0c1;
+  --color-meter-off: #c8c4b6;
+
+  /* Band — the stuck filter bar (84a). The page's one dark surface, so it is
+       the one place the palette inverts: the ramp above is tuned for ink on
+       white and reads as mud on #242320. The band itself is `ink`. */
+  --color-band-ink: #f2eee2; /* search text */
+  --color-band-faint: #a8a294; /* its placeholder */
+  --color-band-dim: #8f8b7d; /* a chip at rest */
+  --color-band-hover: #d8d3c4; /* a chip under the pointer */
+  --color-band-brand: #e3b06a; /* the caret, and a chosen chip */
+  --color-band-chip: rgb(255 255 255 / 0.045); /* a chip's lift */
+  --color-band-chip-hover: rgb(255 255 255 / 0.09);
+  --color-band-wash: rgb(176 118 44 / 0.22); /* a chosen chip's lift */
+  --color-band-edge: #55524a; /* add-skill's hairline, the band's only one */
+  --color-band-edge-hover: #8a8578;
 
   /* Lines */
   --color-hairline: #dcd7c9; /* the cell lattice, dialog rules */
