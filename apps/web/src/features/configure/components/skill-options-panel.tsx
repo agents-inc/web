@@ -20,8 +20,10 @@ import { useState } from "react"
 import { useConfigStore } from "@/stores/config-store"
 import type { LoadState, SkillEntry } from "@/stores/persisted-schema"
 
-const MODELS = ["opus", "fable", "sonnet", "haiku"] as const
-const EFFORTS = ["low", "medium", "high", "xhigh", "max", "ultra"] as const
+// The one option in the panel whose consequence is not self-evident, so the
+// one that gets explained — on demand rather than as standing hint text.
+const SCOPE_TIP =
+  "Determines where the skill is installed to. Project-level skills inherit global, but not vice versa."
 
 // The design's unified matrix: the same four role columns over every
 // implementation domain, with Meta held out as the stated exception. These are
@@ -101,6 +103,57 @@ const liveLoad = (entry: SkillEntry, agentId: string): LoadState | null => {
   return assignment?.enabled ? assignment.load : null
 }
 
+// 89a's glyph: an outlined circle at 12px, Lucide's geometry redrawn hard so
+// it holds at this size. A real button, not a hinted span — that is what makes
+// the explanation reachable without a pointer.
+//
+// The tip is a sibling rather than a child so `peer-*` can reveal it, and it
+// resolves against the panel (the nearest positioned ancestor), clearing the
+// panel's own edge instead of the label's. `:focus`, not `:focus-visible`:
+// asking for the explanation with the keyboard has to work whether or not the
+// browser decides the focus ring is warranted.
+function InfoTip({
+  label,
+  text,
+  flip,
+}: {
+  label: string
+  text: string
+  flip: boolean
+}) {
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={`About ${label}`}
+        className="peer ml-[0.3125rem] inline-flex cursor-pointer align-[-0.0625rem] text-faint hover:text-brand-ink focus-visible:text-brand-ink"
+      >
+        <svg
+          width="12"
+          height="12"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.75"
+          strokeLinecap="round"
+          aria-hidden
+        >
+          <circle cx="12" cy="12" r="9.25" />
+          <path d="M12 11v5.5" />
+          <path d="M12 7.6v.1" />
+        </svg>
+      </button>
+      <span
+        className={`absolute top-0 z-40 hidden w-[12.25rem] bg-tip-field px-[0.5625rem] py-[0.4375rem] font-mono text-8_5 leading-[1.65] font-normal tracking-normal text-matrix-ink normal-case peer-hover:block peer-focus:block ${
+          flip ? "right-[calc(100%+0.5rem)]" : "left-[calc(100%+0.5rem)]"
+        }`}
+      >
+        {text}
+      </span>
+    </>
+  )
+}
+
 // An agent row the grid cannot place: the same cell, labelled and full width.
 function LabelledAgentCell({
   agent,
@@ -178,35 +231,13 @@ export function SkillOptionsPanel({
         flip ? "right-[calc(100%+0.3125rem)]" : "left-[calc(100%+0.3125rem)]"
       }`}
     >
-      <FieldLabel first>Model</FieldLabel>
-      <Segmented>
-        {MODELS.map((model) => (
-          <SegmentedItem
-            key={model}
-            active={entry.model === model}
-            onClick={() => setSkillOption(skillId, { model })}
-          >
-            {model}
-          </SegmentedItem>
-        ))}
-      </Segmented>
-
-      <FieldLabel>Thinking effort</FieldLabel>
-      <Segmented>
-        {EFFORTS.map((effort) => (
-          <SegmentedItem
-            key={effort}
-            active={entry.effort === effort}
-            onClick={() => setSkillOption(skillId, { effort })}
-          >
-            {effort}
-          </SegmentedItem>
-        ))}
-      </Segmented>
-
       {/* Mirrors the cell's two badges — the design requires they stay in sync,
-          which they do by both reading and writing the same store fields. */}
-      <FieldLabel>Install mode</FieldLabel>
+          which they do by both reading and writing the same store fields.
+          Model and thinking effort were the two sections above these until v7;
+          they belong to the sub-agent, and the roster is where they live now —
+          a skill is a plugin from someone else's repo and configures where it
+          installs, not how anyone thinks. */}
+      <FieldLabel first>Install mode</FieldLabel>
       <Segmented>
         {(["plugin", "eject"] as const).map((install) => (
           <SegmentedItem
@@ -218,6 +249,13 @@ export function SkillOptionsPanel({
           </SegmentedItem>
         ))}
       </Segmented>
+
+      {/* Scope rode under the install-mode label until the explanation arrived:
+          the info affordance hangs off a section name, so scope needed its own. */}
+      <FieldLabel>
+        Install scope
+        <InfoTip label="install scope" text={SCOPE_TIP} flip={flip} />
+      </FieldLabel>
       <Segmented>
         {(["project", "global"] as const).map((scope) => (
           <SegmentedItem

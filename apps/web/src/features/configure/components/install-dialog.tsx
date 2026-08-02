@@ -20,6 +20,7 @@ import { useEffect } from "react"
 import {
   selectInstallInventory,
   summarize,
+  type InventoryAgent,
   type InventorySkill,
 } from "@/features/configure/lib/derive"
 import { useInstallCommand } from "@/features/configure/lib/use-install-command"
@@ -80,6 +81,45 @@ function ScopeGroup({
   )
 }
 
+// The same split on the other pane. Sub-agent front-matter used to be written
+// into the project unconditionally, which made its heading decoration; scope
+// is what turns it into the statement the skills pane's headings already are.
+function AgentScopeGroup({
+  label,
+  agents,
+  first = false,
+}: {
+  label: string
+  agents: InventoryAgent[]
+  first?: boolean
+}) {
+  if (agents.length === 0) return null
+
+  return (
+    <>
+      <div
+        className={`pb-1.5 font-mono text-8 font-medium tracking-[.13em] text-brand-ink uppercase ${
+          first ? "pt-0" : "pt-3"
+        }`}
+      >
+        {label}
+      </div>
+      {agents.map(({ agent, baseOnly }) => (
+        <div key={agent.id} className="py-0.5 text-11 text-ink-2">
+          {DOMAIN_LABELS[agent.domainId].toLowerCase()} ·{" "}
+          {agent.label.toLowerCase()}
+          {/* A pinned agent installs as front-matter alone. */}
+          {baseOnly && (
+            <span className="pl-1.5 text-10 text-roster-empty">
+              no skills — base agent
+            </span>
+          )}
+        </div>
+      ))}
+    </>
+  )
+}
+
 // An inventory of what will be written, then the two commands that write it.
 //
 // There is deliberately **no Install button**: installing is a CLI action, so
@@ -98,6 +138,11 @@ export function InstallDialog({
   const inventory = selectInstallInventory(config, added)
   const stats = summarize(config)
   const stack = STACKS.find((candidate) => candidate.id === config.stackId)
+
+  const agentsByScope = {
+    project: inventory.agents.filter((entry) => entry.scope === "project"),
+    global: inventory.agents.filter((entry) => entry.scope === "global"),
+  }
 
   // The end of the funnel. There is no Install button to click — installing
   // is a CLI action — so reaching this dialog is the furthest the web app can
@@ -152,26 +197,12 @@ export function InstallDialog({
 
           <DialogPane side="right">
             <DialogPaneHeading>Agents</DialogPaneHeading>
-            {/* Sub-agent front-matter is always written into the project, so
-                this group is unconditional — unlike the skills pane, which
-                genuinely splits by the user's per-skill scope. */}
-            {inventory.agents.length > 0 && (
-              <div className="pt-0 pb-1.5 font-mono text-8 font-medium tracking-[.13em] text-brand-ink uppercase">
-                Project
-              </div>
-            )}
-            {inventory.agents.map(({ agent, baseOnly }) => (
-              <div key={agent.id} className="py-0.5 text-11 text-ink-2">
-                {DOMAIN_LABELS[agent.domainId].toLowerCase()} ·{" "}
-                {agent.label.toLowerCase()}
-                {/* A pinned agent installs as front-matter alone. */}
-                {baseOnly && (
-                  <span className="pl-1.5 text-10 text-roster-empty">
-                    no skills — base agent
-                  </span>
-                )}
-              </div>
-            ))}
+            <AgentScopeGroup
+              label="Project"
+              agents={agentsByScope.project}
+              first
+            />
+            <AgentScopeGroup label="Global" agents={agentsByScope.global} />
           </DialogPane>
         </DialogPanes>
 

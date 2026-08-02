@@ -17,6 +17,10 @@ import type { AddedSkill } from "@/stores/added-skills-store"
 import {
   DEFAULT_SKILL_OPTIONS,
   isAgentOn,
+  resolveAgentOptions,
+  type AgentEffort,
+  type AgentModel,
+  type AgentScope,
   type LoadState,
   type PersistedConfig,
   type SkillEntry,
@@ -26,7 +30,7 @@ import {
 // a remembered skill is not selected, so no derivation may see one.
 export type ConfigSelection = Pick<
   PersistedConfig,
-  "stackId" | "skills" | "pins"
+  "stackId" | "skills" | "agents"
 >
 
 // Catalog and session-added skills flattened to one shape, so the cell never
@@ -463,6 +467,11 @@ export type RosterSkillRow = {
 export type RosterAgentRow = {
   agent: SubAgent
   on: boolean
+  // Resolved, never stored: the explicit choice if there is one, otherwise the
+  // agent's own resting value. The row draws all three whether it is on or off.
+  model: AgentModel
+  effort: AgentEffort
+  scope: AgentScope
   skills: RosterSkillRow[]
 }
 
@@ -563,6 +572,7 @@ export const selectRosterGroups = (
     const agents = group.agents.map((agent): RosterAgentRow => ({
       agent,
       on: isAgentOn(config, agent.id),
+      ...resolveAgentOptions(config.agents, agent.id),
       skills: [...(byAgent.get(agent.id) ?? [])]
         .sort(byCatalogPosition)
         .map((skill): RosterSkillRow => ({
@@ -628,6 +638,8 @@ export type InventoryAgent = {
   agent: SubAgent
   // Pinned on with nothing assigned — installs as front-matter only.
   baseOnly: boolean
+  // Where its front-matter lands, which is what splits the pane in two.
+  scope: AgentScope
 }
 
 export type InstallInventory = {
@@ -671,7 +683,11 @@ export const selectInstallInventory = (
     global: skills.filter(inScope("global")),
     agents: allAgents()
       .filter((agent) => isAgentOn(config, agent.id))
-      .map((agent) => ({ agent, baseOnly: !holdsSkills(agent.id) })),
+      .map((agent) => ({
+        agent,
+        baseOnly: !holdsSkills(agent.id),
+        scope: resolveAgentOptions(config.agents, agent.id).scope,
+      })),
   }
 }
 
@@ -700,9 +716,7 @@ const sameAssignments = (
 
 const hasDefaultOptions = (entry: SkillEntry) =>
   entry.install === DEFAULT_SKILL_OPTIONS.install &&
-  entry.scope === DEFAULT_SKILL_OPTIONS.scope &&
-  entry.model === DEFAULT_SKILL_OPTIONS.model &&
-  entry.effort === DEFAULT_SKILL_OPTIONS.effort
+  entry.scope === DEFAULT_SKILL_OPTIONS.scope
 
 // Any difference from what the stack would have produced counts as an edit.
 const isSkillEdited = (
@@ -714,10 +728,11 @@ const isSkillEdited = (
   !sameAssignments(entry.assignments, expectedAgents, preloaded)
 
 // The design's "Custom" label, where any edit counts — so options, assignments
-// and agent pins are compared, not just which skills are selected.
+// and every agent decision are compared, not just which skills are selected.
 export const isStackCustom = (config: ConfigSelection): boolean => {
-  // A pin is an edit wherever it appears: `applyStack` writes none.
-  if (Object.keys(config.pins).length > 0) return true
+  // `applyStack` writes no agent records at all, so any entry in that map is
+  // an edit — a pin in either direction, and equally a model or an effort.
+  if (Object.keys(config.agents).length > 0) return true
 
   if (config.stackId === null) return Object.keys(config.skills).length > 0
 

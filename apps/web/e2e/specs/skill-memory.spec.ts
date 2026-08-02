@@ -55,23 +55,28 @@ test.describe("configuration survives deselection", () => {
     await expect(configure.roster.skillRow(REACT, "web-developer")).toBeHidden()
   })
 
-  test("re-selecting restores model and effort", async ({ configure }) => {
+  // The same promise as the badges above, made through the panel instead —
+  // model and effort used to be the pair tested here, and they belong to the
+  // sub-agent now, so install mode and scope are what the panel still holds.
+  test("re-selecting restores options set in the panel", async ({
+    configure,
+  }) => {
     const react = configure.skillIn(web, EXCLUSIVE, REACT)
 
     await react.openOptions()
-    await react.options.choose("opus")
-    await react.options.choose("high")
+    await react.options.choose("eject")
+    await react.options.choose("global")
     await configure.roster.heading.click()
 
     await react.toggle()
     await react.toggle()
     await react.openOptions()
 
-    await expect(react.options.option("opus")).toHaveAttribute(
+    await expect(react.options.option("eject")).toHaveAttribute(
       "aria-pressed",
       "true"
     )
-    await expect(react.options.option("high")).toHaveAttribute(
+    await expect(react.options.option("global")).toHaveAttribute(
       "aria-pressed",
       "true"
     )

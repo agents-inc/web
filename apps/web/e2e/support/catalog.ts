@@ -67,9 +67,21 @@ export const IMPLIED = {
   implierSibling: "Remix",
 } as const
 
-export const SKILL_OPTIONS = {
+// Model and thinking effort belong to the sub-agent, not the skill — skills are
+// plugins from different repos, so a per-skill model never meant anything.
+//
+// There is no single default: an agent rests on its own catalogue model
+// (`SubAgent.model`, "opus" for web-developer and every other developer), and
+// only falls back to sonnet when its metadata names none. Effort rests at
+// medium for everyone until agent metadata carries one.
+//
+// Scope rests at project for everyone, and that one is the CLI's default
+// rather than anything the catalogue says: sub-agent front-matter is written
+// into the project unless the user asks for their own ~/.claude.
+export const AGENT_OPTIONS = {
   models: ["opus", "fable", "sonnet", "haiku"],
-  efforts: ["low", "medium", "high", "xhigh", "max", "ultra"],
-  defaultModel: "sonnet",
-  defaultEffort: "medium",
+  efforts: ["low", "medium", "high", "xhigh", "max"],
+  restingModel: "opus",
+  restingEffort: "medium",
+  restingScope: "project",
 } as const

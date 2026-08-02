@@ -21,6 +21,7 @@ export type AnalyticsEvent =
   | { name: "skill_configured"; skillId: string; field: string; value: string }
   | { name: "assignment_cycled"; skillId: string; agentId: string }
   | { name: "agent_pinned"; agentId: string; on: boolean }
+  | { name: "agent_configured"; agentId: string; field: string; value: string }
 
   // ── Session skills ──────────────────────────────────────────────────────
   // `resultCount: 0` is a catalog gap someone went looking for.

@@ -19,6 +19,9 @@ import {
   migrateConfig,
   persistedConfigSchema,
   pruneUnknownIds,
+  restingAgentOptions,
+  type AgentEntry,
+  type AgentOptions,
   type Assignment,
   type PersistedConfig,
   type SkillEntry,
@@ -43,22 +46,30 @@ type ConfigActions = {
   // — a pinned-off agent stays off as skills arrive, a pinned-on one installs
   // bare.
   toggleAgentPin: (agentId: string) => void
+  // The roster's model word and effort meter. Only non-resting choices are
+  // kept, so cycling a field back to the agent's own default removes it again.
+  setAgentOption: (agentId: string, patch: Partial<AgentOptions>) => void
   // The inbound half of sharing: a fetched config replaces the selection
   // wholesale, exactly as applying a stack does.
   importConfig: (config: PersistedConfig) => void
+  // The saved snapshot, restored. The same wholesale replacement, but sourced
+  // from this browser rather than from a link — so it is deliberately not
+  // `importConfig`, whose event counts share-link arrivals as their own cohort.
+  applySavedStack: (config: PersistedConfig) => void
   reset: () => void
 }
 
 export type ConfigState = PersistedConfig & ConfigActions
 
 type SkillMap = PersistedConfig["skills"]
+type AgentMap = PersistedConfig["agents"]
 type Assignments = SkillEntry["assignments"]
 
 const EMPTY: PersistedConfig = {
   stackId: null,
   skills: {},
   remembered: {},
-  pins: {},
+  agents: {},
 }
 
 // ── Plain helpers ────────────────────────────────────────────────────────
@@ -92,7 +103,7 @@ const countIds = (config: PersistedConfig) => {
 
   return (
     entries.length +
-    Object.keys(config.pins).length +
+    Object.keys(config.agents).length +
     entries.reduce(
       (total, entry) => total + Object.keys(entry?.assignments ?? {}).length,
       0
@@ -274,6 +285,43 @@ const patchAssignment = (
   }
 }
 
+// ── Agent decisions ──────────────────────────────────────────────────────
+
+// The map holds choices, not state: a field set back to the agent's own
+// resting value stops being a choice, so its key goes rather than being stored
+// as "the default, explicitly". `on` is exempt — pinning to the state the
+// assignments already imply is still a decision, and the pin is what holds it
+// there as skills come and go.
+const withoutRestingValues = (
+  entry: AgentEntry,
+  resting: AgentOptions
+): AgentEntry => ({
+  ...(entry.on !== undefined && { on: entry.on }),
+  ...(entry.model !== undefined &&
+    entry.model !== resting.model && { model: entry.model }),
+  ...(entry.effort !== undefined &&
+    entry.effort !== resting.effort && { effort: entry.effort }),
+  ...(entry.scope !== undefined &&
+    entry.scope !== resting.scope && { scope: entry.scope }),
+})
+
+// An agent record left saying nothing is dropped, exactly as an empty skill
+// entry is — the map stays as sparse as what the user actually decided.
+const configureAgent = (
+  agents: AgentMap,
+  agentId: string,
+  patch: Partial<AgentOptions>
+): AgentMap => {
+  const next = withoutRestingValues(
+    { ...agents[agentId], ...patch },
+    restingAgentOptions(agentId)
+  )
+
+  return Object.keys(next).length === 0
+    ? withoutKey(agents, agentId)
+    : { ...agents, [agentId]: next }
+}
+
 // ── Stack expansion ──────────────────────────────────────────────────────
 
 const toAssignments = (
@@ -339,7 +387,7 @@ export const useConfigStore = create<ConfigState>()(
           skills: toStackSkills(expansion),
           // The explicit start-over action, which already confirms first.
           remembered: {},
-          pins: {},
+          agents: {},
         })
       },
 
@@ -421,15 +469,37 @@ export const useConfigStore = create<ConfigState>()(
         ),
 
       toggleAgentPin: (agentId) => {
+        const on = !isAgentOn(get(), agentId)
+
+        // Spread rather than replaced: the same record holds this agent's
+        // model and effort, and switching it off must not forget what it
+        // would install with — the roster keeps showing both, recessed.
         set((state) => ({
-          pins: { ...state.pins, [agentId]: !isAgentOn(state, agentId) },
+          agents: {
+            ...state.agents,
+            [agentId]: { ...state.agents[agentId], on },
+          },
         }))
 
-        track({
-          name: "agent_pinned",
-          agentId,
-          on: get().pins[agentId] ?? false,
-        })
+        track({ name: "agent_pinned", agentId, on })
+      },
+
+      setAgentOption: (agentId, patch) => {
+        set((state) => ({
+          agents: configureAgent(state.agents, agentId, patch),
+        }))
+
+        // One event per field, for the same reason `skill_configured` emits
+        // one: "does anyone ever leave the resting value" is a question per
+        // control, not in aggregate.
+        for (const [field, value] of Object.entries(patch)) {
+          track({
+            name: "agent_configured",
+            agentId,
+            field,
+            value: String(value),
+          })
+        }
       },
 
       importConfig: (config) => {
@@ -444,6 +514,12 @@ export const useConfigStore = create<ConfigState>()(
         })
       },
 
+      applySavedStack: (config) => {
+        // Whatever was pulsing belonged to the selection being replaced.
+        useUiStore.getState().clearFlash()
+        set({ ...config })
+      },
+
       reset: () => {
         useUiStore.getState().clearFlash()
         set({ ...EMPTY })
@@ -455,11 +531,11 @@ export const useConfigStore = create<ConfigState>()(
       migrate: migrateConfig,
       // Session-added skills have no catalog entry, so a persisted selection
       // for one would resurrect a skill the next session cannot describe.
-      partialize: ({ stackId, skills, remembered, pins }) => ({
+      partialize: ({ stackId, skills, remembered, agents }) => ({
         stackId,
         skills: onlyCatalogSkills(skills),
         remembered: onlyCatalogSkills(remembered),
-        pins,
+        agents,
       }),
       // The one untrusted boundary: anything unparseable is discarded in
       // favour of empty state rather than crashing the app.

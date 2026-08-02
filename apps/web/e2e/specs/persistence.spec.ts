@@ -59,6 +59,25 @@ test.describe("persistence", () => {
     )
   })
 
+  // Model and effort are decisions about an agent exactly as a pin is, and they
+  // are just as expensive to make twice.
+  test("an agent's model choice survives a reload", async ({
+    configure,
+    page,
+  }) => {
+    await configure.roster.modelWord("web-developer").click()
+    await expect(
+      configure.roster.modelWord("web-developer")
+    ).toHaveAccessibleName("Model for web-developer: fable")
+
+    await page.reload()
+    await configure.stacks.waitFor()
+
+    await expect(
+      configure.roster.modelWord("web-developer")
+    ).toHaveAccessibleName("Model for web-developer: fable")
+  })
+
   // Corrupt storage must reset to empty rather than take the app down.
   test("unreadable storage falls back to an empty configuration", async ({
     configure,

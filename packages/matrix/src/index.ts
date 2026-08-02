@@ -30,6 +30,7 @@ export {
   seedEffortSchema,
   seedLoadStateSchema,
   seedSkillSchema,
+  seedAgentSchema,
   seedPayloadSchema,
 } from "./seed"
 export type {
@@ -37,6 +38,7 @@ export type {
   SeedEffort,
   SeedLoadState,
   SeedSkill,
+  SeedAgent,
   SeedPayload,
 } from "./seed"
 

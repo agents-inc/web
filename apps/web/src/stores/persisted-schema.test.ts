@@ -7,6 +7,7 @@ import {
   isAgentOn,
   isWorthRemembering,
   migrateConfig,
+  persistedConfigSchema,
   pruneUnknownIds,
   type PersistedConfig,
   type SkillEntry,
@@ -41,8 +42,86 @@ const config = (over: Partial<PersistedConfig> = {}): PersistedConfig => ({
   stackId: null,
   skills: {},
   remembered: {},
-  pins: {},
+  agents: {},
   ...over,
+})
+
+// v7 moved model and effort off the skill and onto the agent, and replaced the
+// boolean `pins` map with one record per agent. v8 gave that record a fourth
+// decision: the scope the agent's front-matter is written into.
+describe("PERSIST_VERSION", () => {
+  it("is 8", () => {
+    expect(PERSIST_VERSION).toBe(8)
+  })
+})
+
+describe("persistedConfigSchema", () => {
+  // Assembled raw rather than through `config()`: a v7 skill cannot be *typed*
+  // with a model any more, and a stale blob out of localStorage is `unknown`
+  // anyway — which is exactly the input the stripping has to survive.
+  it("no longer keeps a model or an effort on a skill", () => {
+    const parsed = persistedConfigSchema.parse({
+      ...config(),
+      skills: {
+        [KNOWN_SKILL]: { ...entry(), model: "opus", effort: "max" },
+      },
+    })
+
+    expect(parsed.skills[KNOWN_SKILL]).not.toHaveProperty("model")
+    expect(parsed.skills[KNOWN_SKILL]).not.toHaveProperty("effort")
+  })
+
+  // Every field is optional and the record is sparse, so "on with no model" and
+  // "a model on an agent nobody has pinned" are both sayable.
+  it.each([
+    ["nothing at all", {}],
+    ["only a pin", { on: true }],
+    ["only a model", { model: "haiku" }],
+    ["only an effort", { effort: "xhigh" }],
+    ["only a scope", { scope: "global" }],
+    [
+      "all four",
+      { on: false, model: "fable", effort: "low", scope: "project" },
+    ],
+  ] as const)("accepts an agent carrying %s", (_label, agent) => {
+    const parsed = persistedConfigSchema.safeParse(
+      config({ agents: { [KNOWN_AGENT]: agent } })
+    )
+
+    expect(parsed.success).toBe(true)
+  })
+
+  // Located on the agent, not merely rejected: the whole config is otherwise
+  // valid, so the complaint has to name the field that is wrong. Raw again —
+  // neither value is a sayable `AgentEntry`, which is the point.
+  it.each([
+    ["a model the CLI does not offer", { model: "gpt" }],
+    ["an effort level that does not exist", { effort: "ultra" }],
+    ["a scope that is nowhere the CLI writes", { scope: "user" }],
+  ])("refuses %s", (_label, agent) => {
+    const parsed = persistedConfigSchema.safeParse({
+      ...config(),
+      agents: { [KNOWN_AGENT]: agent },
+    })
+
+    expect(parsed.success).toBe(false)
+    expect(
+      parsed.error?.issues.map((issue) => issue.path.join("."))
+    ).toContainEqual(expect.stringContaining(`agents.${KNOWN_AGENT}`))
+  })
+
+  // Pre-release policy is discard-don't-migrate, and the version seam does that
+  // first — but a v6 blob that reached the parser must not half-load either.
+  it("refuses a v6 blob that has pins instead of agents", () => {
+    const v6 = {
+      stackId: null,
+      skills: {},
+      remembered: {},
+      pins: { [KNOWN_AGENT]: true },
+    }
+
+    expect(persistedConfigSchema.safeParse(v6).success).toBe(false)
+  })
 })
 
 describe("isWorthRemembering", () => {
@@ -50,9 +129,9 @@ describe("isWorthRemembering", () => {
     expect(isWorthRemembering(entry())).toBe(false)
   })
 
+  // Model and effort were two of the four signals here and are gone: an entry
+  // now says something only through its assignments or its install options.
   it.each([
-    ["a non-default model", { model: "opus" as const }],
-    ["a non-default effort", { effort: "high" as const }],
     ["a non-default install mode", { install: "eject" as const }],
     ["a non-default scope", { scope: "global" as const }],
   ])("keeps an entry with %s", (_label, over) => {
@@ -106,12 +185,47 @@ describe("isAgentOn", () => {
       skills: {
         [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
       },
-      pins: { [KNOWN_AGENT]: false },
+      agents: { [KNOWN_AGENT]: { on: false } },
     })
-    const bare = config({ pins: { [KNOWN_AGENT]: true } })
+    const bare = config({ agents: { [KNOWN_AGENT]: { on: true } } })
 
     expect(isAgentOn(holding, KNOWN_AGENT)).toBe(false)
     expect(isAgentOn(bare, KNOWN_AGENT)).toBe(true)
+  })
+
+  // The record is where model and effort live too, so an agent can have an
+  // entry without anyone having pinned it. Tri-state, not boolean: only an
+  // explicit `on` decides; absent still means "ask the assignments".
+  it("ignores an entry that names no pin", () => {
+    const chosen = { model: "haiku" as const, effort: "max" as const }
+
+    expect(
+      isAgentOn(config({ agents: { [KNOWN_AGENT]: chosen } }), KNOWN_AGENT)
+    ).toBe(false)
+    expect(
+      isAgentOn(
+        config({
+          skills: {
+            [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
+          },
+          agents: { [KNOWN_AGENT]: chosen },
+        }),
+        KNOWN_AGENT
+      )
+    ).toBe(true)
+  })
+
+  // `on: false` is a decision, and `undefined` is the absence of one — a
+  // boolean read would collapse the two and switch every pinned-off agent on.
+  it("keeps a pinned-off agent off while it carries a model", () => {
+    const pinnedOff = config({
+      skills: {
+        [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
+      },
+      agents: { [KNOWN_AGENT]: { on: false, model: "haiku" } },
+    })
+
+    expect(isAgentOn(pinnedOff, KNOWN_AGENT)).toBe(false)
   })
 })
 
@@ -122,7 +236,7 @@ describe("pruneUnknownIds", () => {
       skills: {
         [KNOWN_SKILL]: entry({ assignments: { [KNOWN_AGENT]: LIVE } }),
       },
-      pins: { [KNOWN_AGENT]: true },
+      agents: { [KNOWN_AGENT]: { on: true, model: "haiku" } },
     })
 
     expect(pruneUnknownIds(kept)).toEqual(kept)
@@ -152,12 +266,17 @@ describe("pruneUnknownIds", () => {
     })
   })
 
-  it("drops a retired sub-agent's pin", () => {
+  it("drops a retired sub-agent's own record", () => {
     const pruned = pruneUnknownIds(
-      config({ pins: { [KNOWN_AGENT]: true, [GONE_AGENT]: false } })
+      config({
+        agents: {
+          [KNOWN_AGENT]: { on: true },
+          [GONE_AGENT]: { on: false, model: "haiku" },
+        },
+      })
     )
 
-    expect(pruned.pins).toEqual({ [KNOWN_AGENT]: true })
+    expect(pruned.agents).toEqual({ [KNOWN_AGENT]: { on: true } })
   })
 
   it("falls back to no stack when the stack is gone", () => {

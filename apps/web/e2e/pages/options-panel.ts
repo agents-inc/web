@@ -17,6 +17,20 @@ export class OptionsPanel {
     return this.root.getByRole("button", { name: value, exact: true })
   }
 
+  // The mono uppercase captions above each section, in document order — the
+  // panel's table of contents, and the cheapest way to assert that model and
+  // thinking effort have left it.
+  get sectionLabels(): Locator {
+    return this.root.locator('[data-slot="field-label"]')
+  }
+
+  // The info circle beside a section label, named `About <section>`. A real
+  // button like every other affordance in this panel — that is what makes it
+  // focusable, so the tip is reachable without a pointer.
+  infoGlyph(section: string): Locator {
+    return this.root.getByRole("button", { name: `About ${section}` })
+  }
+
   // A cell in the domain × role assignment matrix, e.g. `Web` / `dev`.
   matrixCell(domain: string, role: string): Locator {
     return this.root.getByRole("button", { name: `${domain} ${role}` })

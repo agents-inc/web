@@ -1,6 +1,7 @@
 import {
   CATALOG,
   STACKS,
+  SUB_AGENTS_BY_ID,
   SUB_AGENT_GROUPS,
   expandStack,
 } from "@workspace/matrix"
@@ -52,10 +53,12 @@ const off = (load: LoadState = "lazy"): Assignment => ({
   enabled: false,
 })
 
+// One record per agent, holding all four of its decisions — the pin, the
+// model, the effort, the scope — and any of them may be absent.
 const scratch = (
   skills: Record<string, SkillEntry> = {},
-  pins: Record<string, boolean> = {}
-): ConfigSelection => ({ stackId: null, skills, pins })
+  agents: ConfigSelection["agents"] = {}
+): ConfigSelection => ({ stackId: null, skills, agents })
 
 // A stack with real assignments, so the "unedited" baseline is not trivially empty.
 const STACK = STACKS.find((candidate) => {
@@ -68,7 +71,7 @@ const asApplied = (): ConfigSelection => {
   const preloaded = new Set<string>(EXPANSION.preloadedSkillIds)
   return {
     stackId: STACK.id,
-    pins: {},
+    agents: {},
     skills: Object.fromEntries(
       EXPANSION.skillIds.map((skillId) => [
         skillId,
@@ -140,8 +143,6 @@ describe("isStackCustom", () => {
   it.each([
     ["install mode", { install: "eject" as const }],
     ["scope", { scope: "global" as const }],
-    ["model", { model: "opus" as const }],
-    ["effort", { effort: "high" as const }],
   ])("is true after changing %s", (_label, patch) => {
     expect(isStackCustom(edit(patch))).toBe(true)
   })
@@ -196,17 +197,24 @@ describe("isStackCustom", () => {
     ).toBe(true)
   })
 
-  // `applyStack` writes no pins, so having one is an edit wherever it appears.
-  it("is true once any agent is pinned", () => {
+  // `applyStack` writes no agent records at all, so any entry in that map is an
+  // edit — a pin in either direction, and equally a model or an effort, which
+  // are now decisions the same map holds.
+  it.each([
+    ["pinned off", { on: false }],
+    ["pinned on", { on: true }],
+    ["given a model", { model: "haiku" }],
+    ["given an effort", { effort: "max" }],
+  ] as const)("is true once an agent is %s", (_label, choice) => {
     expect(
-      isStackCustom({ ...asApplied(), pins: { "web-tester": false } })
+      isStackCustom({ ...asApplied(), agents: { "web-tester": choice } })
     ).toBe(true)
-    expect(isStackCustom(scratch({}, { "web-tester": true }))).toBe(true)
+    expect(isStackCustom(scratch({}, { "web-tester": choice }))).toBe(true)
   })
 
   it("is true when the stack itself no longer exists", () => {
     expect(
-      isStackCustom({ stackId: "deleted-stack", skills: {}, pins: {} })
+      isStackCustom({ stackId: "deleted-stack", skills: {}, agents: {} })
     ).toBe(true)
   })
 })
@@ -262,7 +270,9 @@ describe("summarize", () => {
   })
 
   it("counts a pinned-on agent with no skills as a base agent", () => {
-    expect(summarize(scratch({}, { "web-developer": true })).agentCount).toBe(1)
+    expect(
+      summarize(scratch({}, { "web-developer": { on: true } })).agentCount
+    ).toBe(1)
   })
 
   it("does not count assignments on a pinned-off agent", () => {
@@ -273,7 +283,7 @@ describe("summarize", () => {
           assignments: { "web-developer": live() },
         },
       },
-      { "web-developer": false }
+      { "web-developer": { on: false } }
     )
 
     expect(summarize(config)).toMatchObject({
@@ -336,7 +346,7 @@ describe("selectRosterGroups", () => {
             assignments: { "web-developer": live() },
           },
         },
-        { "web-developer": false, "web-tester": true }
+        { "web-developer": { on: false }, "web-tester": { on: true } }
       )
     )
 
@@ -376,7 +386,7 @@ describe("selectRosterGroups", () => {
             },
           },
         },
-        { "api-developer": false }
+        { "api-developer": { on: false } }
       )
     )
 
@@ -385,6 +395,91 @@ describe("selectRosterGroups", () => {
       .skills[0]!.usedBy.map((agent) => agent.id)
 
     expect(usedBy).toEqual(["web-developer", "web-reviewer"])
+  })
+})
+
+// The roster row is where a model, an effort and a scope become visible, and
+// the store holds only explicit choices — so resolving the resting value is a
+// derivation, not a default written into state.
+describe("roster model, effort and scope", () => {
+  const rowFor = (config: ConfigSelection, agentId: string) =>
+    selectRosterGroups(config, [])
+      .flatMap((group) => group.agents)
+      .find((row) => row.agent.id === agentId)!
+
+  const WEB_DEVELOPER_MODEL = SUB_AGENTS_BY_ID["web-developer"]!.model
+
+  // There is no single default for the model: an agent rests on the one its own
+  // metadata names, and only falls back to sonnet when it names none. Scope is
+  // the opposite — the catalogue says nothing about it, so every agent rests on
+  // the CLI's own default of writing front-matter into the project.
+  it("rests every agent on its catalogue model, medium effort and project", () => {
+    const rows = selectRosterGroups(scratch(), []).flatMap(
+      (group) => group.agents
+    )
+
+    for (const row of rows) {
+      expect(row.model).toBe(SUB_AGENTS_BY_ID[row.agent.id]?.model ?? "sonnet")
+      expect(row.effort).toBe("medium")
+      expect(row.scope).toBe("project")
+    }
+  })
+
+  it("prefers an explicit choice over the resting value", () => {
+    const row = rowFor(
+      scratch(
+        {},
+        { "web-developer": { model: "haiku", effort: "max", scope: "global" } }
+      ),
+      "web-developer"
+    )
+
+    expect(row.model).toBe("haiku")
+    expect(row.effort).toBe("max")
+    expect(row.scope).toBe("global")
+  })
+
+  // The record is sparse per field, not per agent: choosing an effort must not
+  // drag the model or the scope off their resting values.
+  it("falls back field by field", () => {
+    const row = rowFor(
+      scratch({}, { "web-developer": { effort: "low" } }),
+      "web-developer"
+    )
+
+    expect(row.model).toBe(WEB_DEVELOPER_MODEL)
+    expect(row.effort).toBe("low")
+    expect(row.scope).toBe("project")
+  })
+
+  // Choosing a model is not the same as asking for the agent.
+  it("does not switch an agent on for carrying a choice", () => {
+    expect(
+      rowFor(
+        scratch({}, { "web-developer": { model: "haiku" } }),
+        "web-developer"
+      ).on
+    ).toBe(false)
+  })
+
+  // A pinned-off agent keeps both controls, recessed — so it keeps both values.
+  it("resolves them for a pinned-off agent too", () => {
+    const row = rowFor(
+      scratch(
+        {
+          a: {
+            ...DEFAULT_SKILL_OPTIONS,
+            assignments: { "web-developer": live() },
+          },
+        },
+        { "web-developer": { on: false, effort: "xhigh" } }
+      ),
+      "web-developer"
+    )
+
+    expect(row.on).toBe(false)
+    expect(row.model).toBe(WEB_DEVELOPER_MODEL)
+    expect(row.effort).toBe("xhigh")
   })
 })
 
@@ -429,13 +524,35 @@ describe("selectInstallInventory", () => {
 
   it("includes a pinned bare agent, marked base-only", () => {
     const inventory = selectInstallInventory(
-      scratch({}, { "web-developer": true }),
+      scratch({}, { "web-developer": { on: true } }),
       []
     )
 
     expect(inventory.agents).toHaveLength(1)
     expect(inventory.agents[0]!.agent.id).toBe("web-developer")
     expect(inventory.agents[0]!.baseOnly).toBe(true)
+  })
+
+  // The pane splits the agents by scope exactly as it splits the skills, so
+  // every agent has to carry where its front-matter lands — resolved, since
+  // the store holds only the agents that were moved off project.
+  it("carries each agent's resolved scope", () => {
+    const inventory = selectInstallInventory(
+      scratch(
+        {},
+        {
+          "web-developer": { on: true, scope: "global" },
+          "web-reviewer": { on: true },
+        }
+      ),
+      []
+    )
+
+    expect(
+      Object.fromEntries(
+        inventory.agents.map(({ agent, scope }) => [agent.id, scope])
+      )
+    ).toEqual({ "web-developer": "global", "web-reviewer": "project" })
   })
 
   it("excludes a pinned-off agent even when skills point at it", () => {
@@ -447,7 +564,7 @@ describe("selectInstallInventory", () => {
             assignments: { "web-developer": live() },
           },
         },
-        { "web-developer": false }
+        { "web-developer": { on: false } }
       ),
       []
     )

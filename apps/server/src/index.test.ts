@@ -9,18 +9,24 @@ const BASE = "https://api.test"
 
 // The worker deliberately never checks ids against the catalog — that is the
 // CLI's warn-and-skip job — so an arbitrary skill id is a valid payload here.
+//
+// Model and effort belong to the agent, so the skill carries neither and the
+// payload has a second map. A pinned-on agent with no skills is expressible
+// there, which is why `agents` is not simply derivable from the assignments.
 const payload = () => ({
-  v: 1,
+  v: 3,
   matrixVersion: "1.0.0",
   stackId: "next",
   skills: {
     "web-framework-react": {
-      model: "sonnet",
-      effort: "medium",
       install: "plugin",
       scope: "project",
       assignments: { "web-developer": "preloaded" },
     },
+  },
+  agents: {
+    "web-developer": { model: "haiku", effort: "max" },
+    "api-developer": { on: true },
   },
 })
 
@@ -52,7 +58,7 @@ describe("POST /configs", () => {
   })
 
   it("rejects a body that is not a seed payload", async () => {
-    const response = await post({ v: 1, skills: "not-a-record" })
+    const response = await post({ v: 3, skills: "not-a-record" })
     expect(response.status).toBe(400)
   })
 

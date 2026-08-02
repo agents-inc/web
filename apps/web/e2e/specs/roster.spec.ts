@@ -1,5 +1,8 @@
+import type { Locator } from "@playwright/test"
+
 import { expect, test } from "../fixtures"
 import {
+  AGENT_OPTIONS,
   DOMAINS,
   EXCLUSIVE_CATEGORY,
   STACKS,
@@ -9,8 +12,14 @@ import {
 const { web } = DOMAINS
 const { name: CATEGORY, first: REACT } = EXCLUSIVE_CATEGORY
 
+// Quiet-at-rest is a reveal, not a mount: the controls stay in the layout at
+// zero opacity so nothing reflows when they fade in, which means "hidden" is an
+// assertion on opacity rather than on visibility.
+const opacityOf = (locator: Locator) =>
+  locator.evaluate((node) => Number(getComputedStyle(node).opacity))
+
 // The roster stores nothing — every line is derived from `assignments` and
-// `pins`. These assertions are the guard on that: if a copy is ever
+// `agents`. These assertions are the guard on that: if a copy is ever
 // introduced, the bands, the rows and the Install label will disagree with
 // the grid.
 test.describe("roster panel", () => {
@@ -235,5 +244,164 @@ test.describe("roster panel", () => {
         })
         .toBeCloseTo(railTop + index * step, 0)
     }
+  })
+})
+
+// Model and thinking effort belong to the sub-agent: a skill is a plugin from
+// someone else's repo, so it has no business naming a model. Both controls sit
+// right-aligned on the agent's name row, beside the pin rather than inside it.
+test.describe("agent model and effort", () => {
+  test("the model word rests on the agent's own catalogue default", async ({
+    configure,
+  }) => {
+    const model = configure.roster.modelWord("web-developer")
+
+    await expect(model).toHaveText(AGENT_OPTIONS.restingModel)
+    await expect(model).toHaveAccessibleName(
+      `Model for web-developer: ${AGENT_OPTIONS.restingModel}`
+    )
+  })
+
+  // opus → fable → sonnet → haiku, starting from wherever the agent rests.
+  test("clicking the model word cycles it", async ({ configure }) => {
+    const model = configure.roster.modelWord("web-developer")
+
+    await model.click()
+
+    await expect(model).toHaveText("fable")
+    await expect(model).toHaveAccessibleName("Model for web-developer: fable")
+  })
+
+  // It sits on the agent's row, so the one thing it must never do is pin it.
+  test("choosing a model does not switch the agent on", async ({
+    configure,
+  }) => {
+    const developer = configure.roster.agentButton("web", "developer")
+
+    await expect(developer).toHaveAttribute("aria-pressed", "false")
+    await configure.roster.modelWord("web-developer").click()
+
+    await expect(developer).toHaveAttribute("aria-pressed", "false")
+    await expect(configure.roster.installButton).toContainText("0 sub-agents")
+  })
+
+  test("the effort meter rests on medium and cycles upward", async ({
+    configure,
+  }) => {
+    const effort = configure.roster.effortMeter("web-developer")
+
+    await expect(effort).toHaveAccessibleName(
+      `Effort for web-developer: ${AGENT_OPTIONS.restingEffort}`
+    )
+
+    // low → medium → high → xhigh → max → low, so two steps from medium is
+    // xhigh.
+    await effort.click()
+    await effort.click()
+
+    await expect(effort).toHaveAccessibleName("Effort for web-developer: xhigh")
+  })
+
+  test("choosing an effort does not switch the agent on", async ({
+    configure,
+  }) => {
+    const developer = configure.roster.agentButton("web", "developer")
+
+    await configure.roster.effortMeter("web-developer").click()
+
+    await expect(developer).toHaveAttribute("aria-pressed", "false")
+  })
+
+  // An agent switched off still installs nothing, but it keeps the settings it
+  // would install with — recessed, not removed, exactly like its skill rows.
+  test("a pinned-off agent keeps both controls", async ({ configure }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const developer = configure.roster.agentButton("web", "developer")
+
+    await developer.click()
+    await expect(developer).toHaveAttribute("aria-pressed", "false")
+
+    await expect(configure.roster.modelWord("web-developer")).toBeVisible()
+    await expect(configure.roster.effortMeter("web-developer")).toBeVisible()
+  })
+})
+
+// Nothing on the right edge of a skill row may compete with the effort meter
+// above it, so the load word and the where-used count are invisible until the
+// pointer — or the keyboard — is somewhere in the agent's block.
+test.describe("quiet at rest", () => {
+  // The reveal is opacity only: the word holds its place in the layout at rest,
+  // or every row beneath it would move the moment the pointer arrived.
+  test("the load word is hidden until the agent block is hovered", async ({
+    configure,
+  }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const load = configure.roster.loadWord(REACT, "web-developer")
+
+    expect(await opacityOf(load)).toBe(0)
+    const atRest = (await load.boundingBox())!
+
+    await configure.roster.agentButton("web", "developer").hover()
+    await expect.poll(() => opacityOf(load)).toBe(1)
+
+    expect(await load.boundingBox()).toMatchObject({
+      x: atRest.x,
+      y: atRest.y,
+      width: atRest.width,
+      height: atRest.height,
+    })
+  })
+
+  test("the where-used count is hidden until the agent block is hovered", async ({
+    configure,
+  }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const uses = configure.roster.whereUsed(REACT, "web-developer")
+
+    expect(await opacityOf(uses)).toBe(0)
+
+    await configure.roster.agentButton("web", "developer").hover()
+    await expect.poll(() => opacityOf(uses)).toBe(1)
+  })
+
+  // Hovering a skill row is still inside the same block, so the whole group
+  // reveals together rather than row by row.
+  test("hovering one row reveals the whole block", async ({ configure }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const uses = configure.roster.whereUsed(REACT, "web-developer")
+
+    expect(await opacityOf(uses)).toBe(0)
+
+    await configure.roster.skillRow(REACT, "web-developer").hover()
+
+    await expect
+      .poll(() => opacityOf(configure.roster.loadWord(REACT, "web-developer")))
+      .toBe(1)
+    await expect.poll(() => opacityOf(uses)).toBe(1)
+  })
+
+  // Keyboard equivalence: focus anywhere in the block does what hover does.
+  test("focus inside the block reveals it too", async ({ configure }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const load = configure.roster.loadWord(REACT, "web-developer")
+
+    expect(await opacityOf(load)).toBe(0)
+
+    await configure.roster.agentButton("web", "developer").focus()
+    await expect.poll(() => opacityOf(load)).toBe(1)
+  })
+
+  // The block ends at the agent: pointing at one agent must not light up the
+  // next one's rows.
+  test("a neighbouring agent stays quiet", async ({ configure }) => {
+    await configure.skillIn(web, CATEGORY, REACT).toggle()
+    const neighbour = configure.roster.loadWord(REACT, "web-reviewer")
+
+    await configure.roster.agentButton("web", "developer").hover()
+
+    await expect
+      .poll(() => opacityOf(configure.roster.loadWord(REACT, "web-developer")))
+      .toBe(1)
+    expect(await opacityOf(neighbour)).toBe(0)
   })
 })

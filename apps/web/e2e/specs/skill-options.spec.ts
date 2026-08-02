@@ -1,10 +1,14 @@
 import { expect, test } from "../fixtures"
-import { DOMAINS, EXCLUSIVE_CATEGORY, SKILL_OPTIONS } from "../support/catalog"
+import { DOMAINS, EXCLUSIVE_CATEGORY } from "../support/catalog"
 
 const { web } = DOMAINS
 const { name: CATEGORY, first: SKILL } = EXCLUSIVE_CATEGORY
 const MATRIX_DOMAIN = "Web"
 const MATRIX_ROLE = "dev"
+
+// The one piece of explanatory copy in the panel, behind the info glyph.
+const SCOPE_TIP =
+  "Determines where the skill is installed to. Project-level skills inherit global, but not vice versa."
 
 test.describe("skill options panel", () => {
   test("the ellipsis opens the panel", async ({ configure }) => {
@@ -83,7 +87,7 @@ test.describe("skill options panel", () => {
     const skill = configure.skillIn(web, CATEGORY, SKILL)
 
     await skill.openOptions()
-    await skill.options.choose("opus")
+    await skill.options.choose("global")
     await skill.options.cycleAssignment(MATRIX_DOMAIN, MATRIX_ROLE)
     await expect(skill.root).toHaveAttribute("aria-pressed", "false")
 
@@ -91,8 +95,9 @@ test.describe("skill options panel", () => {
     await skill.toggle()
 
     await expect(skill.agentCount).toHaveText("3 agents")
+    await expect(skill.scopeBadge).toHaveAccessibleName("Scope: global")
     await skill.openOptions()
-    await expect(skill.options.option("opus")).toHaveAttribute(
+    await expect(skill.options.option("global")).toHaveAttribute(
       "aria-pressed",
       "true"
     )
@@ -124,31 +129,32 @@ test.describe("skill options panel", () => {
     await expect(skill.options.root).toBeHidden()
   })
 
-  test("model and effort rest on their defaults", async ({ configure }) => {
+  // A skill is a plugin from someone else's repo — it configures where it
+  // installs and which agents carry it, and nothing about how they think.
+  test("the panel is install mode, install scope and sub-agents", async ({
+    configure,
+  }) => {
     const skill = configure.skillIn(web, CATEGORY, SKILL)
     await skill.openOptions()
+    const labels = skill.options.sectionLabels
 
-    await expect(
-      skill.options.option(SKILL_OPTIONS.defaultModel)
-    ).toHaveAttribute("aria-pressed", "true")
-    await expect(
-      skill.options.option(SKILL_OPTIONS.defaultEffort)
-    ).toHaveAttribute("aria-pressed", "true")
+    await expect(labels).toHaveCount(3)
+    await expect(labels.nth(0)).toContainText("Install mode")
+    // Scope used to share the install-mode label; it names itself now, because
+    // the info affordance hangs off that name.
+    await expect(labels.nth(1)).toContainText("Install scope")
+    await expect(labels.nth(2)).toContainText("Sub-agents")
   })
 
-  test("choosing a model moves the selection", async ({ configure }) => {
+  test("model and thinking effort have left the panel", async ({
+    configure,
+  }) => {
     const skill = configure.skillIn(web, CATEGORY, SKILL)
     await skill.openOptions()
 
-    await skill.options.choose("opus")
-
-    await expect(skill.options.option("opus")).toHaveAttribute(
-      "aria-pressed",
-      "true"
-    )
-    await expect(
-      skill.options.option(SKILL_OPTIONS.defaultModel)
-    ).toHaveAttribute("aria-pressed", "false")
+    await expect(skill.options.root).not.toContainText("Thinking effort")
+    await expect(skill.options.option("opus")).toBeHidden()
+    await expect(skill.options.option("max")).toBeHidden()
   })
 
   test("the panel's install mode stays in sync with the cell badge", async ({
@@ -174,6 +180,45 @@ test.describe("skill options panel", () => {
       "aria-pressed",
       "true"
     )
+  })
+})
+
+// Project versus global is the one option in the panel whose consequence is not
+// self-evident, so it is the one that gets explained — on demand, not as
+// standing hint text.
+test.describe("install scope info affordance", () => {
+  test("the scope label carries an info glyph", async ({ configure }) => {
+    const skill = configure.skillIn(web, CATEGORY, SKILL)
+    await skill.openOptions()
+
+    await expect(skill.options.infoGlyph("install scope")).toBeVisible()
+  })
+
+  test("hovering it explains what scope decides", async ({
+    configure,
+    page,
+  }) => {
+    const skill = configure.skillIn(web, CATEGORY, SKILL)
+    await skill.openOptions()
+    const tip = page.getByText(SCOPE_TIP)
+
+    // Nothing is on screen until it is asked for.
+    await expect(tip).toBeHidden()
+
+    await skill.options.infoGlyph("install scope").hover()
+
+    await expect(tip).toBeVisible()
+  })
+
+  // Keyboard equivalence: the glyph is focusable precisely so the explanation
+  // is not pointer-only.
+  test("focusing it explains the same thing", async ({ configure, page }) => {
+    const skill = configure.skillIn(web, CATEGORY, SKILL)
+    await skill.openOptions()
+
+    await skill.options.infoGlyph("install scope").focus()
+
+    await expect(page.getByText(SCOPE_TIP)).toBeVisible()
   })
 })
 
